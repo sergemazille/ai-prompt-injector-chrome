@@ -1,0 +1,30 @@
+{
+  "version": "1.1",
+  "exported": "2024-01-15T10:30:00.000Z",
+  "prompts": [
+    {
+      "id": "prompt_1705312200000_abc123def",
+      "label": "Code Review Assistant",
+      "template": "Please review this code and provide feedback on:\n- Code quality and best practices\n- Potential bugs or issues\n- Performance optimizations\n- Security considerations",
+      "tags": ["development", "code-review"],
+      "favorite": true,
+      "createdAt": 1705312200000
+    },
+    {
+      "id": "prompt_1705312800000_xyz789ghi",
+      "label": "Meeting Summary",
+      "template": "Summarize the key points from this meeting:\n- Main decisions made\n- Action items and assignees\n- Next steps and deadlines",
+      "tags": ["productivity", "meetings"],
+      "favorite": false,
+      "createdAt": 1705312800000
+    },
+    {
+      "id": "prompt_1705313400000_def456jkl",
+      "label": "Bug Report Template",
+      "template": "## Bug Description\n\n## Steps to Reproduce\n1. \n2. \n3. \n\n## Expected Behavior\n\n## Actual Behavior\n\n## Environment\n- Browser: \n- Version: \n- OS: ",
+      "tags": ["development", "bug-tracking", "template"],
+      "favorite": false,
+      "createdAt": 1705313400000
+    }
+  ]
+}

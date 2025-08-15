@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AI Prompt Injector</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-title-section">
+        <img src="icons/icon48.png" alt="AI Prompt Injector Icon" class="header-icon">
+        <h1>AI Prompt Injector</h1>
+      </div>
+      <div class="header-actions">
+        <button id="import-btn" title="Import prompts">Import</button>
+        <button id="export-btn" title="Export prompts">Export</button>
+        <button id="new-prompt-btn">New Prompt</button>
+      </div>
+    </header>
+
+    <!-- Import Drop Zone -->
+    <div id="drop-zone" class="drop-zone hidden">
+      <div class="drop-zone-content">
+        <div class="import-methods">
+          <div class="import-method">
+            <h4>Method 1: Drag and drop</h4>
+            <p>Drag your JSON file here</p>
+          </div>
+          
+          <div class="import-method">
+            <h4>Method 2: Browse</h4>
+            <p><button id="browse-btn">Select a file</button></p>
+          </div>
+          
+          <div class="import-method">
+            <h4>Method 3: Paste JSON</h4>
+            <textarea id="paste-json" placeholder="Paste your JSON here (Ctrl+V)" rows="4"></textarea>
+            <div class="paste-actions">
+              <button id="import-from-paste">Import</button>
+            </div>
+            <small class="paste-help">💡 Tip: You can paste directly with Ctrl+V in the text area</small>
+          </div>
+        </div>
+        <small>Only .json files are accepted</small>
+      </div>
+    </div>
+
+    <!-- Filter Section -->
+    <div class="filter-section">
+      <div class="search-container">
+        <input type="search" id="search-input" placeholder="Search prompts..." />
+        <div class="search-icon">🔍</div>
+      </div>
+      <select id="tag-filter">
+        <option value="">All tags</option>
+      </select>
+    </div>
+
+    <!-- Prompt Form -->
+    <div id="prompt-form" class="form-section hidden">
+      <h2 id="form-title">New Prompt</h2>
+      <form id="prompt-form-element">
+        <div class="form-group">
+          <label for="prompt-title">Title:</label>
+          <input type="text" id="prompt-title" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="prompt-content">Content:</label>
+          <textarea id="prompt-content" rows="6" required></textarea>
+        </div>
+        
+        <div class="form-group">
+          <label for="prompt-tags">Tags (comma-separated):</label>
+          <input type="text" id="prompt-tags" placeholder="tag1, tag2, tag3">
+        </div>
+        
+        <div class="form-actions">
+          <button type="submit" id="save-btn">Save</button>
+          <button type="button" id="cancel-btn">Cancel</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Prompt List -->
+    <div id="prompt-list" class="prompt-list">
+      <!-- Prompts will be dynamically inserted here -->
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty-state" class="empty-state hidden">
+      <p>No prompts found. Create your first prompt!</p>
+    </div>
+  </div>
+
+  <!-- Hidden file input for import -->
+  <input type="file" id="import-file" accept=".json" style="display: none;">
+
+  <!-- Notification -->
+  <div id="notification" class="notification hidden">
+    <span id="notification-text"></span>
+  </div>
+
+  <script src="browser-polyfill.js"></script>
+  <script src="storage.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
