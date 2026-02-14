@@ -311,3 +311,5 @@ class PromptStorage {
 }
 
 const promptStorage = new PromptStorage();
+
+export { PromptStorage, promptStorage };

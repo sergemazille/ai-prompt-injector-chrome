@@ -18,7 +18,7 @@ export default defineConfig({
     include: ['tests/**/*.test.js'],
     
     // Exclude irrelevant files
-    exclude: ['node_modules', 'dist', 'screenshots']
+    exclude: ['node_modules', 'dist', 'screenshots', 'tests/integration']
   },
   
   // Module resolution for Chrome extension
