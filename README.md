@@ -2,7 +2,8 @@
 
 Manage and insert prompts into any AI chat interface.
 
-![AI Prompt Injector](screenshots/AI%20Prompt%20Injector.jpg)
+![AI Prompt Injector](images/light-theme.jpg)
+![AI Prompt Injector - dark theme](images/dark-theme.jpg)
 
 ## Features
 
@@ -16,9 +17,14 @@ Manage and insert prompts into any AI chat interface.
 - **Automatic Backups**: On browser startup, extension update, and before each import (max 3); restore from popup
 - **i18n**: English and French
 - **Theme Toggle**: Auto / Light / Dark
+- **Accessibility** — `aria-label` on interactive elements, `aria-live` notifications, keyboard navigation
 - **Privacy-first**: All data stored locally, zero tracking, no network requests
 
 ## Installation
+
+### Chrome Web Store
+
+Install from [Chrome Web Store](https://chromewebstore.google.com/detail/ai-prompt-injector/odjlacmnhpgdoifeeemjahbjpapnoccl).
 
 ### Manual (development)
 
