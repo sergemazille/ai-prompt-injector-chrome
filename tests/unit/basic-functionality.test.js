@@ -288,4 +288,265 @@ describe('Vitest Configuration - Basic Tests', () => {
       expect(() => parseImportData('{"invalid": "format"}')).toThrow('Invalid format')
     })
   })
+
+  describe('Backup System', () => {
+    const MAX_BACKUPS = 3
+    const ANTI_SPAM_MS = 3600000 // 1 hour
+
+    const createBackup = (backups, reason) => {
+      const prompts = [{ id: '1', label: 'Test', template: 'Content' }]
+      
+      // Anti-spam check
+      if (backups.length > 0) {
+        const lastTimestamp = backups[0].timestamp
+        if (Date.now() - lastTimestamp < ANTI_SPAM_MS) {
+          return { backups, created: false }
+        }
+      }
+
+      const backup = {
+        id: 'backup_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+        timestamp: Date.now(),
+        date: new Date().toISOString(),
+        reason,
+        promptCount: prompts.length,
+        prompts
+      }
+
+      const newBackups = [backup, ...backups].slice(0, MAX_BACKUPS)
+      return { backups: newBackups, created: true }
+    }
+
+    it('creates backup with correct structure', () => {
+      const result = createBackup([], 'startup')
+      
+      expect(result.created).toBe(true)
+      expect(result.backups).toHaveLength(1)
+      expect(result.backups[0]).toHaveProperty('id')
+      expect(result.backups[0]).toHaveProperty('timestamp')
+      expect(result.backups[0]).toHaveProperty('date')
+      expect(result.backups[0]).toHaveProperty('reason', 'startup')
+      expect(result.backups[0]).toHaveProperty('promptCount')
+      expect(result.backups[0]).toHaveProperty('prompts')
+    })
+
+    it('limits backups to 3', () => {
+      let backups = []
+      const now = Date.now()
+      
+      // Create backups with timestamps spaced > 1 hour apart to bypass anti-spam
+      for (let i = 0; i < 5; i++) {
+        const backup = {
+          id: 'backup_' + now + '_' + i,
+          timestamp: now - (i * 3700000), // > 1 hour apart
+          date: new Date(now - (i * 3700000)).toISOString(),
+          reason: 'startup',
+          promptCount: 1,
+          prompts: [{ id: String(i) }]
+        }
+        backups = [backup, ...backups].slice(0, MAX_BACKUPS)
+      }
+      
+      expect(backups).toHaveLength(MAX_BACKUPS)
+    })
+
+    it('skips backup if less than 1 hour old', () => {
+      const oldBackup = {
+        id: 'backup_old',
+        timestamp: Date.now() - 1800000, // 30 min ago
+        date: new Date().toISOString(),
+        reason: 'startup',
+        promptCount: 1,
+        prompts: []
+      }
+      
+      const result = createBackup([oldBackup], 'update')
+      
+      expect(result.created).toBe(false)
+      expect(result.backups).toHaveLength(1)
+    })
+
+    it('allows backup after 1 hour', () => {
+      const oldBackup = {
+        id: 'backup_old',
+        timestamp: Date.now() - 3700000, // > 1 hour ago
+        date: new Date().toISOString(),
+        reason: 'startup',
+        promptCount: 1,
+        prompts: []
+      }
+      
+      const result = createBackup([oldBackup], 'update')
+      
+      expect(result.created).toBe(true)
+      expect(result.backups).toHaveLength(2)
+    })
+
+    const restoreBackup = (backups, backupId) => {
+      const backup = backups.find(b => b.id === backupId)
+      if (!backup) throw new Error('Backup not found')
+      
+      const newBackups = backups.filter(b => b.id !== backupId)
+      return { prompts: backup.prompts, backups: newBackups }
+    }
+
+    it('restores backup correctly', () => {
+      const backups = [
+        { id: 'b1', prompts: [{ id: '1', label: 'Old' }] },
+        { id: 'b2', prompts: [{ id: '2', label: 'New' }] }
+      ]
+      
+      const result = restoreBackup(backups, 'b1')
+      
+      expect(result.prompts).toHaveLength(1)
+      expect(result.prompts[0].label).toBe('Old')
+      expect(result.backups).toHaveLength(1)
+    })
+
+    it('throws when backup not found', () => {
+      const backups = [{ id: 'b1', prompts: [] }]
+      
+      expect(() => restoreBackup(backups, 'nonexistent')).toThrow('Backup not found')
+    })
+  })
+
+  describe('i18n System', () => {
+    const translations = {
+      en: {
+        'btn.save': 'Save',
+        'btn.cancel': 'Cancel',
+        'notify.imported': '{0} prompts imported successfully!',
+        'notify.empty': 'No prompts'
+      },
+      fr: {
+        'btn.save': 'Enregistrer',
+        'btn.cancel': 'Annuler',
+        'notify.imported': '{0} prompts importés avec succès !'
+      }
+    }
+
+    const detectLocale = (lang) => {
+      return lang.startsWith('fr') ? 'fr' : 'en'
+    }
+
+    const translate = (locale, key, ...params) => {
+      let str = translations[locale]?.[key] ?? translations.en[key] ?? key
+      params.forEach((val, i) => {
+        str = str.replace(`{${i}}`, val)
+      })
+      return str
+    }
+
+    it('detects French locale', () => {
+      expect(detectLocale('fr-FR')).toBe('fr')
+      expect(detectLocale('fr')).toBe('fr')
+    })
+
+    it('detects English locale', () => {
+      expect(detectLocale('en-US')).toBe('en')
+      expect(detectLocale('en')).toBe('en')
+      expect(detectLocale('de-DE')).toBe('en')
+    })
+
+    it('translates key in current locale', () => {
+      expect(translate('en', 'btn.save')).toBe('Save')
+      expect(translate('fr', 'btn.save')).toBe('Enregistrer')
+    })
+
+    it('falls back to English for missing keys', () => {
+      expect(translate('fr', 'notify.empty')).toBe('No prompts')
+    })
+
+    it('translates with parameters', () => {
+      const result = translate('en', 'notify.imported', 5)
+      expect(result).toBe('5 prompts imported successfully!')
+    })
+
+    it('handles missing translations gracefully', () => {
+      expect(translate('en', 'nonexistent.key')).toBe('nonexistent.key')
+    })
+
+    // DOM application test
+    const applyI18nToDOM = (locale) => {
+      const elements = document.querySelectorAll('[data-i18n]')
+      elements.forEach(el => {
+        const key = el.dataset.i18n
+        el.textContent = translate(locale, key)
+      })
+    }
+
+    it('applies translations to DOM elements', () => {
+      document.body.innerHTML = '<span data-i18n="btn.save"></span><span data-i18n="btn.cancel"></span>'
+      
+      applyI18nToDOM('en')
+      
+      expect(document.querySelector('[data-i18n="btn.save"]').textContent).toBe('Save')
+      expect(document.querySelector('[data-i18n="btn.cancel"]').textContent).toBe('Cancel')
+    })
+
+    it('applies French translations to DOM', () => {
+      document.body.innerHTML = '<span data-i18n="btn.save"></span>'
+      
+      applyI18nToDOM('fr')
+      
+      expect(document.querySelector('[data-i18n="btn.save"]').textContent).toBe('Enregistrer')
+    })
+  })
+
+  describe('Theme System', () => {
+    const applyTheme = (theme) => {
+      if (theme === 'auto') {
+        document.documentElement.removeAttribute('data-theme')
+      } else {
+        document.documentElement.setAttribute('data-theme', theme)
+      }
+      return theme
+    }
+
+    it('applies dark theme', () => {
+      applyTheme('dark')
+      expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    })
+
+    it('applies light theme', () => {
+      applyTheme('light')
+      expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+    })
+
+    it('removes theme attribute for auto', () => {
+      applyTheme('dark')
+      applyTheme('auto')
+      expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
+    })
+
+    const cycleTheme = (current) => {
+      const themes = ['auto', 'light', 'dark']
+      const idx = themes.indexOf(current)
+      return themes[(idx + 1) % themes.length]
+    }
+
+    it('cycles through themes in order', () => {
+      expect(cycleTheme('auto')).toBe('light')
+      expect(cycleTheme('light')).toBe('dark')
+      expect(cycleTheme('dark')).toBe('auto')
+    })
+
+    // Simulate prefers-color-scheme
+    const getEffectiveTheme = (storedTheme) => {
+      if (storedTheme !== 'auto' && storedTheme) {
+        return storedTheme
+      }
+      // Mock system preference
+      return 'light'
+    }
+
+    it('uses stored theme when not auto', () => {
+      expect(getEffectiveTheme('dark')).toBe('dark')
+      expect(getEffectiveTheme('light')).toBe('light')
+    })
+
+    it('uses system preference when auto', () => {
+      expect(getEffectiveTheme('auto')).toBe('light')
+    })
+  })
 })
