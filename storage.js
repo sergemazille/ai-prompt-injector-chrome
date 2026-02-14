@@ -1,7 +1,7 @@
 class PromptStorage {
   constructor() {
     this.storageKey = 'prompts';
-    this.selectorsKey = 'selectors';
+    this.backupsKey = 'backups';
   }
 
   generateId() {
@@ -9,7 +9,6 @@ class PromptStorage {
   }
 
   extractTimestampFromId(id) {
-    // Extract timestamp from ID format: "prompt_TIMESTAMP_random"
     const match = id && id.match && id.match(/^prompt_(\d+)_/);
     return match ? parseInt(match[1]) : Date.now();
   }
@@ -30,20 +29,16 @@ class PromptStorage {
       return [];
     }
     
-    // Ensure all prompts have favorite and createdAt properties (backward compatibility)
     prompts = prompts.map(prompt => ({
       ...prompt,
-      favorite: prompt.favorite === true, // Ensure it's a boolean, default to false
-      createdAt: prompt.createdAt || this.extractTimestampFromId(prompt.id) // Extract from ID if missing
+      favorite: prompt.favorite === true,
+      createdAt: prompt.createdAt || this.extractTimestampFromId(prompt.id)
     }));
     
-    // Sort by favorites first, then by creation date (newest first)
     prompts.sort((a, b) => {
-      // Primary sort: favorites first
       if (a.favorite !== b.favorite) {
         return a.favorite ? -1 : 1;
       }
-      // Secondary sort: newest first within same favorite status
       return (b.createdAt || 0) - (a.createdAt || 0);
     });
     
@@ -76,7 +71,7 @@ class PromptStorage {
       label,
       template,
       tags,
-      favorite: prompt.favorite === true, // Ensure it's a boolean, default to false
+      favorite: prompt.favorite === true,
       createdAt: prompt.createdAt || (prompt.id ? this.extractTimestampFromId(prompt.id) : currentTime)
     };
     if (!prompt.id) {
@@ -117,11 +112,9 @@ class PromptStorage {
 
   async toggleFavorite(promptId) {
     try {
-      // Get raw data (unsorted) to avoid affecting storage order
       const result = await chrome.storage.local.get(this.storageKey);
       let prompts = result[this.storageKey] || [];
       
-      // Ensure it's an array (backward compatibility)
       if (!Array.isArray(prompts)) {
         if (prompts && typeof prompts === 'object' && Array.isArray(prompts.prompts)) {
           prompts = prompts.prompts;
@@ -140,7 +133,6 @@ class PromptStorage {
       prompts[promptIndex].favorite = !oldStatus;
       const newStatus = prompts[promptIndex].favorite;
       
-      // Ensure createdAt exists for consistency
       if (!prompts[promptIndex].createdAt) {
         prompts[promptIndex].createdAt = this.extractTimestampFromId(prompts[promptIndex].id);
       }
@@ -176,7 +168,7 @@ class PromptStorage {
     try {
       const prompts = await this.getPrompts();
       const data = {
-        version: '1.1',
+        version: '1.3',
         exported: new Date().toISOString(),
         prompts: prompts
       };
@@ -228,7 +220,6 @@ class PromptStorage {
       const favoriteValue = pick(raw, ['favorite', 'starred', 'pinned']);
       const timestampValue = pick(raw, ['createdAt', 'created_at', 'timestamp', 'date', 'created', 'dateCreated']);
       
-      // Parse timestamp if it exists, otherwise use current time
       let createdAt = Date.now();
       if (timestampValue) {
         if (typeof timestampValue === 'number') {
@@ -259,33 +250,61 @@ class PromptStorage {
   }
 }
 
-  async getSelectors() {
+  async createBackup(reason) {
     try {
-      const result = await chrome.storage.local.get(this.selectorsKey);
-      return result[this.selectorsKey] || this.getDefaultSelectors();
+      const result = await chrome.storage.local.get([this.storageKey, this.backupsKey]);
+      const prompts = Array.isArray(result[this.storageKey]) ? result[this.storageKey] : [];
+      if (prompts.length === 0) return;
+
+      let backups = result[this.backupsKey] || [];
+
+      if (backups.length > 0) {
+        const lastTimestamp = backups[0].timestamp;
+        if (Date.now() - lastTimestamp < 3600000) return;
+      }
+
+      const backup = {
+        id: 'backup_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+        timestamp: Date.now(),
+        date: new Date().toISOString(),
+        reason,
+        promptCount: prompts.length,
+        prompts: JSON.parse(JSON.stringify(prompts))
+      };
+
+      backups.unshift(backup);
+      while (backups.length > 3) backups.pop();
+
+      await chrome.storage.local.set({ [this.backupsKey]: backups });
     } catch (error) {
-      console.error('Error getting selectors:', error);
-      return this.getDefaultSelectors();
+      console.error('Error creating backup:', error);
     }
   }
 
-  getDefaultSelectors() {
-    return {
-      'chat.openai.com': '#prompt-textarea',
-      'gemini.google.com': '[contenteditable="true"]',
-      'claude.ai': '[contenteditable="true"]',
-      'chat.mistral.ai': 'textarea',
-      'grok.x.ai': 'textarea',
-      'www.perplexity.ai': 'textarea',
-      'chat.deepseek.com': 'textarea'
-    };
+  async getBackups() {
+    try {
+      const result = await chrome.storage.local.get(this.backupsKey);
+      return result[this.backupsKey] || [];
+    } catch (error) {
+      console.error('Error getting backups:', error);
+      return [];
+    }
   }
 
-  async saveSelectors(selectors) {
+  async restoreBackup(backupId) {
     try {
-      await chrome.storage.local.set({ [this.selectorsKey]: selectors });
+      await this.createBackup('preRestore');
+      
+      const backups = await this.getBackups();
+      const backup = backups.find(b => b.id === backupId);
+      
+      if (!backup) {
+        throw new Error('Backup not found');
+      }
+
+      await chrome.storage.local.set({ [this.storageKey]: backup.prompts });
     } catch (error) {
-      console.error('Error saving selectors:', error);
+      console.error('Error restoring backup:', error);
       throw error;
     }
   }

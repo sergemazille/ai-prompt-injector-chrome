@@ -3,15 +3,18 @@ class PromptManager {
     this.currentEditId = null;
     this.currentFilter = '';
     this.currentSearchFilter = '';
+    this.allTags = [];
+    this.tagSuggestionIndex = -1;
     this.init();
   }
 
   async init() {
+    await this.initTheme();
+    applyI18nToDOM();
     this.bindEvents();
     await this.loadPrompts();
     await this.loadTags();
 
-    // Auto-focus search input when popup opens
     setTimeout(() => {
       const searchInput = document.getElementById('search-input');
       if (searchInput) {
@@ -20,9 +23,48 @@ class PromptManager {
     }, 100);
   }
 
-  bindEvents() {
-    console.log('Binding events...');
+  async initTheme() {
+    try {
+      const result = await chrome.storage.local.get(['theme']);
+      const theme = result.theme || 'auto';
+      this.applyTheme(theme);
+    } catch (error) {
+      this.applyTheme('auto');
+    }
+  }
 
+  applyTheme(theme) {
+    if (theme === 'auto') {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+    this.updateThemeIcon(theme);
+  }
+
+  updateThemeIcon(theme) {
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    if (theme === 'light') btn.textContent = '☀️';
+    else if (theme === 'dark') btn.textContent = '🌙';
+    else btn.textContent = '🖥️';
+  }
+
+  cycleTheme() {
+    const themes = ['auto', 'light', 'dark'];
+    const currentBtn = document.getElementById('theme-toggle');
+    let current = 'auto';
+    if (currentBtn.textContent === '☀️') current = 'light';
+    else if (currentBtn.textContent === '🌙') current = 'dark';
+    
+    const idx = themes.indexOf(current);
+    const next = themes[(idx + 1) % themes.length];
+    
+    this.applyTheme(next);
+    chrome.storage.local.set({ theme: next });
+  }
+
+  bindEvents() {
     const elements = {
       'new-prompt-btn': () => this.showForm(),
       'cancel-btn': () => this.hideForm(),
@@ -33,16 +75,13 @@ class PromptManager {
       'import-btn': () => this.toggleImportMode(),
       'browse-btn': () => this.importPrompts(),
       'import-from-paste': () => this.importFromPaste(),
+      'backups-btn': () => this.toggleBackupPanel(),
+      'theme-toggle': () => this.cycleTheme(),
     };
 
     for (const [id, handler] of Object.entries(elements)) {
       const element = document.getElementById(id);
-      console.log(`Element ${id}:`, element);
-
-      if (!element) {
-        console.error(`Element with id '${id}' not found!`);
-        continue;
-      }
+      if (!element) continue;
 
       if (id === 'prompt-form-element') {
         element.addEventListener('submit', handler);
@@ -53,17 +92,173 @@ class PromptManager {
       } else {
         element.addEventListener('click', handler);
       }
-
-      console.log(`Event bound for ${id}`);
     }
 
-    console.log('All events bound');
-
-    // Setup drag and drop for import
     this.setupDragAndDrop();
-
-    // Setup paste textarea input listener
     this.setupPasteTextarea();
+    this.setupTagAutocomplete();
+  }
+
+  setupTagAutocomplete() {
+    const tagInput = document.getElementById('prompt-tags');
+    if (!tagInput) return;
+
+    tagInput.addEventListener('input', () => this.handleTagInput());
+    tagInput.addEventListener('keydown', (e) => this.handleTagKeydown(e));
+    tagInput.addEventListener('blur', () => {
+      setTimeout(() => this.hideTagSuggestions(), 200);
+    });
+  }
+
+  handleTagInput() {
+    const input = document.getElementById('prompt-tags');
+    const value = input.value.toLowerCase().trim();
+    const lastTag = value.split(',').pop().trim();
+    
+    if (!lastTag || this.allTags.length === 0) {
+      this.hideTagSuggestions();
+      return;
+    }
+
+    const matches = this.allTags.filter(tag => 
+      tag.toLowerCase().includes(lastTag) && 
+      !value.split(',').map(t => t.trim().toLowerCase()).includes(tag.toLowerCase())
+    );
+
+    if (matches.length === 0) {
+      this.hideTagSuggestions();
+      return;
+    }
+
+    this.showTagSuggestions(matches, lastTag);
+  }
+
+  showTagSuggestions(matches, searchTerm) {
+    const container = document.getElementById('tag-suggestions');
+    container.innerHTML = '';
+    container.classList.remove('hidden');
+    this.tagSuggestionIndex = -1;
+
+    matches.forEach((tag, idx) => {
+      const item = document.createElement('div');
+      item.className = 'tag-suggestion-item';
+      item.setAttribute('role', 'option');
+      item.setAttribute('data-index', idx);
+      
+      const regex = new RegExp(`(${searchTerm})`, 'gi');
+      const highlighted = tag.replace(regex, '<span class="tag-match">$1</span>');
+      item.innerHTML = highlighted;
+      
+      item.addEventListener('click', () => this.selectTag(tag));
+      container.appendChild(item);
+    });
+  }
+
+  hideTagSuggestions() {
+    const container = document.getElementById('tag-suggestions');
+    container.classList.add('hidden');
+    container.innerHTML = '';
+    this.tagSuggestionIndex = -1;
+  }
+
+  handleTagKeydown(e) {
+    const container = document.getElementById('tag-suggestions');
+    if (container.classList.contains('hidden')) return;
+
+    const items = container.querySelectorAll('.tag-suggestion-item');
+    if (items.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      this.tagSuggestionIndex = Math.min(this.tagSuggestionIndex + 1, items.length - 1);
+      this.updateActiveSuggestion(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      this.tagSuggestionIndex = Math.max(this.tagSuggestionIndex - 1, 0);
+      this.updateActiveSuggestion(items);
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      if (this.tagSuggestionIndex >= 0) {
+        e.preventDefault();
+        const selectedTag = items[this.tagSuggestionIndex].textContent;
+        this.selectTag(selectedTag);
+      }
+    } else if (e.key === 'Escape') {
+      this.hideTagSuggestions();
+    }
+  }
+
+  updateActiveSuggestion(items) {
+    items.forEach((item, idx) => {
+      item.classList.toggle('active', idx === this.tagSuggestionIndex);
+    });
+  }
+
+  selectTag(tag) {
+    const input = document.getElementById('prompt-tags');
+    const tags = input.value.split(',').map(t => t.trim()).filter(Boolean);
+    tags.pop();
+    tags.push(tag);
+    input.value = tags.join(', ') + ', ';
+    this.hideTagSuggestions();
+    input.focus();
+  }
+
+  async toggleBackupPanel() {
+    const panel = document.getElementById('backup-panel');
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden')) {
+      this.loadBackups();
+    }
+  }
+
+  async loadBackups() {
+    try {
+      const backups = await promptStorage.getBackups();
+      const list = document.getElementById('backup-list');
+      
+      if (!backups || backups.length === 0) {
+        list.innerHTML = `<div class="empty-state">${t('backup.empty')}</div>`;
+        return;
+      }
+
+      list.innerHTML = '';
+      backups.forEach(backup => {
+        const item = document.createElement('div');
+        item.className = 'backup-item';
+        
+        const date = new Date(backup.timestamp).toLocaleString();
+        const reason = t(`backup.reason.${backup.reason}`) || backup.reason;
+        
+        item.innerHTML = `
+          <div class="backup-item-info">
+            <span class="backup-item-date">${date}</span>
+            <span class="backup-item-reason">${reason}</span>
+            <span class="backup-item-count">${backup.promptCount} prompts</span>
+          </div>
+          <button class="btn btn--sm btn--primary" data-id="${backup.id}">${t('btn.restore')}</button>
+        `;
+        
+        item.querySelector('button').addEventListener('click', () => this.restoreBackup(backup.id));
+        list.appendChild(item);
+      });
+    } catch (error) {
+      console.error('Error loading backups:', error);
+    }
+  }
+
+  async restoreBackup(backupId) {
+    if (!confirm(t('confirm.restore'))) return;
+    
+    try {
+      await promptStorage.restoreBackup(backupId);
+      await this.loadPrompts();
+      await this.loadTags();
+      this.showNotification(t('notify.restored', 0), 'success');
+      this.toggleBackupPanel();
+    } catch (error) {
+      console.error('Error restoring backup:', error);
+      this.showNotification(t('notify.restoreError'), 'error');
+    }
   }
 
   setupDragAndDrop() {
@@ -103,7 +298,6 @@ class PromptManager {
     });
 
     textarea.addEventListener('paste', () => {
-      // Small delay to let the paste content be processed
       setTimeout(() => {
         this.updateImportButtonState();
       }, 10);
@@ -111,53 +305,46 @@ class PromptManager {
   }
 
   toggleImportMode() {
-    console.log('Toggling import mode');
     const dropZone = document.getElementById('drop-zone');
     const promptList = document.getElementById('prompt-list');
+    const backupPanel = document.getElementById('backup-panel');
 
     if (dropZone.classList.contains('hidden')) {
-      // Show drop zone
       dropZone.classList.remove('hidden');
       promptList.style.display = 'none';
-      document.getElementById('import-btn').textContent = 'Cancel';
-      // Clear previous paste content
+      backupPanel.classList.add('hidden');
+      document.getElementById('import-btn').textContent = t('btn.cancel');
       const textarea = document.getElementById('paste-json');
       textarea.value = '';
       this.updateImportButtonState();
       this.highlightRecommendedMethod();
-
-      // Auto-focus textarea for better user experience
       setTimeout(() => {
         textarea.focus();
       }, 100);
     } else {
-      // Hide drop zone  
       dropZone.classList.add('hidden');
-      promptList.style.display = '';  // Reset to use CSS default (grid)
-      document.getElementById('import-btn').textContent = 'Import';
+      promptList.style.display = '';
+      document.getElementById('import-btn').textContent = t('btn.import');
     }
   }
 
   highlightRecommendedMethod() {
     const methods = document.querySelectorAll('.import-method');
-
-    // Highlight recommended method
     methods[0]?.classList.add('recommended');
     methods[2]?.classList.remove('recommended');
   }
 
-
   async importFromPaste() {
-    console.log('Importing from pasted content');
     const textarea = document.getElementById('paste-json');
     const jsonText = textarea.value.trim();
 
     if (!jsonText) {
-      this.showNotification('Please paste JSON content first');
+      this.showNotification(t('notify.pasteFirst'));
       return;
     }
 
-    // Create a fake event object to reuse existing import logic
+    await promptStorage.createBackup('preImport');
+    
     const fakeEvent = {
       target: {
         files: [{
@@ -188,10 +375,10 @@ class PromptManager {
     const tagsInput = document.getElementById('prompt-tags');
 
     if (promptId) {
-      title.textContent = 'Edit Prompt';
+      title.textContent = t('form.editPrompt');
       this.loadPromptForEdit(promptId);
     } else {
-      title.textContent = 'New Prompt';
+      title.textContent = t('form.newPrompt');
       titleInput.value = '';
       contentInput.value = '';
       tagsInput.value = '';
@@ -204,6 +391,7 @@ class PromptManager {
   hideForm() {
     document.getElementById('prompt-form').classList.add('hidden');
     this.currentEditId = null;
+    this.hideTagSuggestions();
   }
 
   async loadPromptForEdit(promptId) {
@@ -227,7 +415,7 @@ class PromptManager {
     const tagsInput = document.getElementById('prompt-tags').value.trim();
 
     if (!title || !content) {
-      alert('Title and content are required');
+      alert(t('alert.titleContentRequired'));
       return;
     }
 
@@ -247,7 +435,7 @@ class PromptManager {
       await this.loadTags();
     } catch (error) {
       console.error('Error saving prompt:', error);
-      alert('Error saving prompt. Please try again.');
+      alert(t('alert.saveError'));
     }
   }
 
@@ -262,13 +450,13 @@ class PromptManager {
 
   async loadTags() {
     try {
-      const tags = await promptStorage.getAllTags();
+      this.allTags = await promptStorage.getAllTags();
       const select = document.getElementById('tag-filter');
       const currentValue = select.value;
 
-      select.innerHTML = '<option value="">All tags</option>';
+      select.innerHTML = `<option value="">${t('filter.allTags')}</option>`;
 
-      tags.forEach(tag => {
+      this.allTags.forEach(tag => {
         const option = document.createElement('option');
         option.value = tag;
         option.textContent = tag;
@@ -284,7 +472,7 @@ class PromptManager {
     const container = document.getElementById('prompt-list');
     const emptyState = document.getElementById('empty-state');
 
-    if (prompts.length === 0) {
+    if (!prompts || prompts.length === 0) {
       container.innerHTML = '';
       emptyState.classList.remove('hidden');
       return;
@@ -294,14 +482,12 @@ class PromptManager {
 
     let filteredPrompts = prompts;
 
-    // Apply search filter first (primary filter)
     if (this.currentSearchFilter) {
       filteredPrompts = filteredPrompts.filter(prompt =>
         prompt.label.toLowerCase().includes(this.currentSearchFilter)
       );
     }
 
-    // Apply tag filter second (secondary filter)
     if (this.currentFilter) {
       filteredPrompts = filteredPrompts.filter(prompt =>
         prompt.tags && prompt.tags.includes(this.currentFilter)
@@ -312,12 +498,11 @@ class PromptManager {
       container.innerHTML = '';
       const noResults = document.createElement('div');
       noResults.className = 'no-results';
-      noResults.textContent = 'No prompts match the current filter.';
+      noResults.textContent = t('filter.noResults');
       container.appendChild(noResults);
       return;
     }
 
-    // Clear container and add prompts safely
     container.innerHTML = '';
     filteredPrompts.forEach(prompt => {
       const element = this.createPromptElementDOM(prompt);
@@ -326,12 +511,10 @@ class PromptManager {
   }
 
   createPromptElementDOM(prompt) {
-    // Create main container
     const promptItem = document.createElement('div');
     promptItem.className = 'prompt-item';
     promptItem.dataset.id = prompt.id;
 
-    // Create header
     const header = document.createElement('div');
     header.className = 'prompt-header';
 
@@ -342,13 +525,14 @@ class PromptManager {
     const star = document.createElement('span');
     star.className = prompt.favorite ? 'favorite-star favorited' : 'favorite-star';
     star.dataset.id = prompt.id;
-    star.title = prompt.favorite ? 'Remove from favorites' : 'Add to favorites';
+    star.setAttribute('role', 'button');
+    star.setAttribute('tabindex', '0');
+    star.setAttribute('aria-label', prompt.favorite ? t('aria.removeFavorite', prompt.label) : t('aria.addFavorite', prompt.label));
     star.textContent = prompt.favorite ? '★' : '☆';
 
     header.appendChild(title);
     header.appendChild(star);
 
-    // Create tags container
     const tagsContainer = document.createElement('div');
     tagsContainer.className = 'prompt-tags';
     if (prompt.tags && prompt.tags.length > 0) {
@@ -357,19 +541,19 @@ class PromptManager {
         tagSpan.className = 'tag';
         tagSpan.dataset.tag = tag;
         tagSpan.textContent = tag;
+        tagSpan.setAttribute('role', 'button');
         tagsContainer.appendChild(tagSpan);
       });
     }
 
-    // Create actions container
     const actions = document.createElement('div');
     actions.className = 'prompt-actions';
 
     const buttons = [
-      { class: 'insert-btn', text: 'Insert' },
-      { class: 'copy-btn', text: 'Copy' },
-      { class: 'edit-btn', text: 'Edit' },
-      { class: 'delete-btn', text: 'Delete' }
+      { class: 'btn btn--success btn--sm', text: t('btn.insert'), aria: t('aria.insertPrompt', prompt.label) },
+      { class: 'btn btn--primary btn--sm', text: t('btn.copy'), aria: t('aria.copyPrompt', prompt.label) },
+      { class: 'btn btn--sm', text: t('btn.edit'), aria: t('aria.editPrompt', prompt.label) },
+      { class: 'btn btn--danger btn--sm', text: t('btn.delete'), aria: t('aria.deletePrompt', prompt.label) }
     ];
 
     buttons.forEach(btnConfig => {
@@ -377,46 +561,15 @@ class PromptManager {
       button.className = btnConfig.class;
       button.dataset.id = prompt.id;
       button.textContent = btnConfig.text;
+      button.setAttribute('aria-label', btnConfig.aria);
       actions.appendChild(button);
     });
 
-    // Assemble the prompt item
     promptItem.appendChild(header);
     promptItem.appendChild(tagsContainer);
     promptItem.appendChild(actions);
 
     return promptItem;
-  }
-
-  createPromptElement(prompt) {
-    const tagsHtml = prompt.tags && prompt.tags.length > 0
-      ? prompt.tags.map(tag => `<span class="tag" data-tag="${tag}">${tag}</span>`).join('')
-      : '';
-
-    const starIcon = prompt.favorite ? '★' : '☆';
-    const starClass = prompt.favorite ? 'favorite-star favorited' : 'favorite-star';
-
-    return `
-      <div class="prompt-item" data-id="${prompt.id}">
-        <div class="prompt-header">
-          <h3 class="prompt-title">${this.escapeHtml(prompt.label)}</h3>
-          <span class="${starClass}" data-id="${prompt.id}" title="${prompt.favorite ? 'Remove from favorites' : 'Add to favorites'}">${starIcon}</span>
-        </div>
-        <div class="prompt-tags">${tagsHtml}</div>
-        <div class="prompt-actions">
-          <button class="insert-btn" data-id="${prompt.id}">Insert</button>
-          <button class="copy-btn" data-id="${prompt.id}">Copy</button>
-          <button class="edit-btn" data-id="${prompt.id}">Edit</button>
-          <button class="delete-btn" data-id="${prompt.id}">Delete</button>
-        </div>
-      </div>
-    `;
-  }
-
-  escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 
   async filterPrompts(tag) {
@@ -444,17 +597,13 @@ class PromptManager {
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Error exporting prompts:', error);
-      alert('Error exporting prompts. Please try again.');
+      alert(t('alert.exportError'));
     }
   }
 
   async importPrompts() {
-    console.log('Import button clicked');
-
     try {
-      // Try modern File System Access API first
       if ('showOpenFilePicker' in window) {
-        console.log('Using File System Access API');
         const [fileHandle] = await window.showOpenFilePicker({
           types: [{
             description: 'JSON files',
@@ -465,9 +614,6 @@ class PromptManager {
         });
 
         const file = await fileHandle.getFile();
-        console.log('File selected via File System Access API:', file);
-
-        // Create a fake event object to maintain compatibility
         const fakeEvent = {
           target: {
             files: [file]
@@ -478,99 +624,61 @@ class PromptManager {
         return;
       }
     } catch (error) {
-      console.log('File System Access API failed or cancelled:', error);
-      // Fall through to traditional method
     }
 
-    // Fallback to traditional input file method
-    console.log('Falling back to input file method');
     const importFile = document.getElementById('import-file');
-
     if (!importFile) {
-      console.error('Import file element not found!');
-      this.showNotification('Error: import-file element not found');
+      this.showNotification(t('notify.importElementError'));
       return;
     }
 
-    // Reset the input value to ensure change event fires even for same file
     importFile.value = '';
-
-    // Add a temporary event listener for this specific import
     const handleFileSelect = async (e) => {
-      console.log('Temporary file handler called');
       importFile.removeEventListener('change', handleFileSelect);
       await this.handleImportFile(e);
     };
 
     importFile.addEventListener('change', handleFileSelect);
-
-    console.log('Triggering file dialog...');
     importFile.click();
   }
 
   async handleImportFile(e) {
-    console.log('handleImportFile called with event:', e);
-    console.log('Event target:', e.target);
-    console.log('Files:', e.target.files);
-
     const file = e.target.files[0];
-    console.log('Import file selected:', file);
 
     if (!file) {
-      console.log('No file selected');
       return;
     }
 
     try {
-      console.log('File details:', {
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        lastModified: file.lastModified
-      });
-
-      // Check file type
       if (!file.name.toLowerCase().endsWith('.json')) {
-        console.log('File is not JSON format');
-        this.showNotification('Please select a JSON file');
+        this.showNotification(t('notify.selectJson'));
         e.target.value = '';
         return;
       }
 
-      console.log('Reading file content...');
+      await promptStorage.createBackup('preImport');
+      
       const text = await file.text();
-      console.log('File content read, length:', text.length);
-      console.log('File content preview:', text.substring(0, 200) + '...');
-
-      console.log('Calling importPrompts...');
       const result = await promptStorage.importPrompts(text);
-      console.log('Import result:', result);
 
       if (result.imported === 0) {
-        this.showNotification('No new prompts imported');
-        console.log('No prompts were imported');
+        this.showNotification(t('notify.noNewImported'));
       } else if (result.imported === result.total) {
-        this.showNotification(`${result.imported} prompts imported successfully!`);
-        console.log(`Successfully imported all ${result.imported} prompts`);
+        this.showNotification(t('notify.importedAll', result.imported), 'success');
       } else {
-        this.showNotification(`${result.imported}/${result.total} prompts imported`);
-        console.log(`Partially imported ${result.imported} out of ${result.total} prompts`);
+        this.showNotification(t('notify.importedPartial', result.imported, result.total));
       }
 
-      console.log('Reloading prompts and tags...');
       await this.loadPrompts();
       await this.loadTags();
-      console.log('Import process completed');
 
-      // Close import mode if it's open
       const dropZone = document.getElementById('drop-zone');
       if (dropZone && !dropZone.classList.contains('hidden')) {
         this.toggleImportMode();
       }
     } catch (error) {
       console.error('Error importing prompts:', error);
-      console.error('Error stack:', error.stack);
-      this.showNotification(`Import error: ${error.message}`);
+      this.showNotification(t('notify.importError', error.message));
     }
 
     e.target.value = '';
@@ -580,93 +688,83 @@ class PromptManager {
     try {
       const prompt = await promptStorage.getPromptById(promptId);
       if (!prompt) {
-        console.error('Prompt not found:', promptId);
         return;
       }
 
-      console.log('Inserting prompt:', prompt.label);
-
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tabs.length === 0) {
-        alert('No active tab found');
+        alert(t('alert.noActiveTab'));
         return;
       }
 
       const tabId = tabs[0].id;
-      console.log('Active tab ID:', tabId, 'URL:', tabs[0].url);
 
-      try {
-        const response = await chrome.tabs.sendMessage(tabId, {
-          action: 'insertPrompt',
-          text: prompt.template
-        });
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (text, locale) => {
+          window._aiPromptPending = text;
+          window._aiPromptLocale = locale;
+        },
+        args: [prompt.template, I18N_LOCALE]
+      });
 
-        console.log('Message response:', response);
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['content.js']
+      });
 
-        if (response && response.success) {
-          if (response.fallback === 'clipboard') {
-            console.log('Insertion fell back to clipboard');
-          } else {
-            console.log('Prompt inserted successfully');
-          }
-          window.close();
-        } else {
-          throw new Error(response?.error || 'Unknown insertion error');
-        }
-      } catch (error) {
-        console.error('Message sending failed:', error);
-
-        await this.copyToClipboard(prompt.template);
-        console.log('Could not communicate with page. Content copied to clipboard instead.');
-        window.close();
-      }
+      window.close();
     } catch (error) {
       console.error('Error inserting prompt:', error);
-      console.log('Error inserting prompt: ' + error.message);
+      await this.copyToClipboard(prompt.template);
+      this.showNotification(t('notify.cannotInject'), 'warning');
+      window.close();
     }
   }
 
-  showNotification(message) {
+  showNotification(message, type = 'info') {
     const notification = document.getElementById('notification');
     const notificationText = document.getElementById('notification-text');
+
+    notification.className = 'notification';
+    if (type === 'success') notification.classList.add('notification--success');
+    else if (type === 'error') notification.classList.add('notification--error');
+    else if (type === 'warning') notification.classList.add('notification--warning');
 
     notificationText.textContent = message;
     notification.classList.remove('hidden');
 
+    const duration = type === 'warning' ? 6000 : 4000;
     setTimeout(() => {
       notification.classList.add('hidden');
-    }, 2000);
+    }, duration);
   }
 
   async copyToClipboard(text) {
     try {
       await navigator.clipboard.writeText(text);
-      console.log('Content copied to clipboard');
     } catch (error) {
       console.error('Clipboard write failed:', error);
     }
   }
 
-
   async copyPromptToClipboard(promptId) {
     try {
       const prompt = await promptStorage.getPromptById(promptId);
       if (!prompt) {
-        console.error('Prompt not found:', promptId);
         return;
       }
 
       await this.copyToClipboard(prompt.template);
-      this.showNotification('Prompt copied!');
-      console.log('Prompt copied to clipboard:', prompt.label);
+      this.showNotification(t('notify.copied'), 'success');
     } catch (error) {
       console.error('Error copying prompt to clipboard:', error);
-      this.showNotification('Error copying prompt');
+      this.showNotification(t('notify.copyError'), 'error');
     }
   }
 
   async deletePrompt(promptId) {
-    if (!confirm('Are you sure you want to delete this prompt?')) return;
+    if (!confirm(t('confirm.delete'))) return;
 
     try {
       await promptStorage.deletePrompt(promptId);
@@ -674,33 +772,24 @@ class PromptManager {
       await this.loadTags();
     } catch (error) {
       console.error('Error deleting prompt:', error);
-      alert('Error deleting prompt. Please try again.');
+      alert(t('alert.deleteError'));
     }
   }
 
   async toggleFavorite(promptId) {
     try {
-      // Get prompt info before toggling for better notification
       const prompt = await promptStorage.getPromptById(promptId);
-      const wasInitiallyFavorite = prompt.favorite;
-
       const newFavoriteStatus = await promptStorage.toggleFavorite(promptId);
-      console.log('Favorite toggled:', promptId, 'New status:', newFavoriteStatus);
-
-      // Reload prompts to reflect the new sorting order
       await this.loadPrompts();
 
-      // Show a more informative notification
-      let message;
       if (newFavoriteStatus) {
-        message = '★ Added to favorites (moved to top)';
+        this.showNotification(t('notify.addedFavorite'), 'success');
       } else {
-        message = '☆ Removed from favorites (repositioned by date)';
+        this.showNotification(t('notify.removedFavorite'), 'success');
       }
-      this.showNotification(message);
     } catch (error) {
       console.error('Error toggling favorite:', error);
-      this.showNotification('Error updating favorite status');
+      this.showNotification(t('notify.favoriteError'), 'error');
     }
   }
 }
@@ -722,7 +811,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const promptId = e.target.dataset.id;
       await manager.deletePrompt(promptId);
     } else if (e.target.classList.contains('favorite-star')) {
-      e.stopPropagation(); // Prevent triggering prompt insertion
+      e.stopPropagation();
       const promptId = e.target.dataset.id;
       await manager.toggleFavorite(promptId);
     } else if (e.target.classList.contains('tag')) {
@@ -730,7 +819,6 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('tag-filter').value = tag;
       await manager.filterPrompts(tag);
     } else if (e.target.classList.contains('prompt-item') || e.target.closest('.prompt-item')) {
-      // Ignore clicks on buttons, tags, and stars - they have their own handlers
       if (e.target.closest('.prompt-actions') ||
         e.target.classList.contains('tag') ||
         e.target.classList.contains('favorite-star')) {

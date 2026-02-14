@@ -1,6 +1,6 @@
 # Privacy Policy for AI Prompt Injector
 
-*Last updated: August 2025*
+*Last updated: February 2026*
 
 ## Overview
 
@@ -49,18 +49,11 @@ The extension requires minimal permissions to function:
 
 ### `scripting` Permission
 - **Purpose**: To execute the content script that inserts prompts into text fields
-- **Scope**: Only runs on supported AI websites listed in the manifest
-- **Timing**: Only executes when you click "Insert" on a prompt
+- **Scope**: Combined with `activeTab`, only executes on the current tab when you click "Insert"
+- **Timing**: Only executes when you explicitly trigger a prompt insertion
 
 ### Host Permissions
-The extension requests access to specific AI chat websites:
-- chatgpt.com
-- claude.ai
-- gemini.google.com
-- chat.mistral.ai
-- And other AI platforms listed in manifest.json
-
-**Important**: The extension only interacts with these sites when you explicitly click "Insert" to add a prompt.
+**Note**: The extension does not use host permissions or a predefined list of websites. Thanks to the `activeTab` permission, it can insert prompts on any page you are actively viewing, but only when you explicitly trigger the action.
 
 ## Data Security
 
@@ -155,4 +148,4 @@ We believe your prompts are your intellectual property and should remain private
 
 ---
 
-*This privacy policy applies to the AI Prompt Injector browser extension version 1.0.1 and later.*
+*This privacy policy applies to the AI Prompt Injector browser extension version 1.3.0 and later.*

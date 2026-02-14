@@ -1,6 +1,9 @@
+if (!window._aiPromptInjectorLoaded) {
+window._aiPromptInjectorLoaded = true;
+
 const AI_PROMPT_INJECTOR_NS = 'ai_prompt_injector';
 
-const PromptInjector = {
+window.PromptInjector = {
   selectors: [
     '#prompt-textarea',
     'textarea[placeholder*="message"]',
@@ -31,26 +34,19 @@ const PromptInjector = {
     const specificSelectors = this.domainSelectors[hostname] || [];
     const allSelectors = [...specificSelectors, ...this.selectors];
 
-    console.log(`[${AI_PROMPT_INJECTOR_NS}] Searching for input field on ${hostname}`);
-    console.log(`[${AI_PROMPT_INJECTOR_NS}] Using selectors:`, allSelectors);
-
     for (const selector of allSelectors) {
       try {
         const elements = document.querySelectorAll(selector);
-        console.log(`[${AI_PROMPT_INJECTOR_NS}] Found ${elements.length} elements for selector: ${selector}`);
 
         for (const element of elements) {
           if (this.isValidTarget(element)) {
-            console.log(`[${AI_PROMPT_INJECTOR_NS}] Valid target found:`, element);
             return element;
           }
         }
       } catch (error) {
-        console.warn(`[${AI_PROMPT_INJECTOR_NS}] Error with selector ${selector}:`, error);
       }
     }
 
-    console.warn(`[${AI_PROMPT_INJECTOR_NS}] No suitable input field found`);
     return null;
   },
 
@@ -74,8 +70,6 @@ const PromptInjector = {
   },
 
   async insertText(text) {
-    console.log(`[${AI_PROMPT_INJECTOR_NS}] Attempting to insert text:`, text.substring(0, 100) + '...');
-
     const target = this.findTarget();
     if (!target) {
       throw new Error('No suitable input field found');
@@ -87,13 +81,17 @@ const PromptInjector = {
       } else {
         this.insertIntoInput(target, text);
       }
-
-      console.log(`[${AI_PROMPT_INJECTOR_NS}] Text inserted successfully`);
       return true;
     } catch (error) {
-      console.error(`[${AI_PROMPT_INJECTOR_NS}] Insertion failed:`, error);
-      throw error;
     }
+
+    try {
+      this.insertViaExecCommand(target, text);
+      return true;
+    } catch (error) {
+    }
+
+    throw new Error('All insertion methods failed');
   },
 
   insertIntoContentEditable(element, text) {
@@ -139,11 +137,26 @@ const PromptInjector = {
     }
   },
 
+  insertViaExecCommand(element, text) {
+    element.focus();
+
+    if (element.isContentEditable || element.contentEditable === 'true') {
+      const selection = window.getSelection();
+      selection.selectAllChildren(element);
+    } else {
+      element.select();
+    }
+
+    const result = document.execCommand('insertText', false, text);
+    if (!result) {
+      throw new Error('execCommand insertText returned false');
+    }
+  },
+
   async copyToClipboard(text) {
     try {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text);
-        console.log(`[${AI_PROMPT_INJECTOR_NS}] Text copied to clipboard`);
         return true;
       } else {
         const textArea = document.createElement('textarea');
@@ -159,24 +172,22 @@ const PromptInjector = {
         document.body.removeChild(textArea);
 
         if (successful) {
-          console.log(`[${AI_PROMPT_INJECTOR_NS}] Text copied to clipboard (fallback method)`);
           return true;
         }
       }
     } catch (error) {
-      console.error(`[${AI_PROMPT_INJECTOR_NS}] Clipboard copy failed:`, error);
     }
     return false;
   }
 };
 
-function showNotification(message, type = 'info') {
+window.showNotification = function(message, type = 'info', duration = 4000) {
   const notification = document.createElement('div');
   notification.style.cssText = `
     position: fixed;
     top: 20px;
     right: 20px;
-    background: ${type === 'error' ? '#ef4444' : type === 'success' ? '#10b981' : '#3b82f6'};
+    background: ${type === 'error' ? '#EF4444' : type === 'success' ? '#10B981' : type === 'warning' ? '#F59E0B' : '#3B82F6'};
     color: white;
     padding: 12px 20px;
     border-radius: 6px;
@@ -195,49 +206,39 @@ function showNotification(message, type = 'info') {
     if (notification.parentNode) {
       notification.parentNode.removeChild(notification);
     }
-  }, 4000);
+  }, duration);
+};
+
 }
 
+if (window._aiPromptPending) {
+  const text = window._aiPromptPending;
+  const locale = window._aiPromptLocale || 'en';
+  delete window._aiPromptPending;
+  delete window._aiPromptLocale;
 
-
-if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
-  chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
-    console.log(`[${AI_PROMPT_INJECTOR_NS}] Received message:`, message);
-
-    if (message.action === 'insertPrompt') {
-      try {
-        const success = await PromptInjector.insertText(message.text);
-        if (success) {
-          showNotification('Prompt inserted successfully!', 'success');
-          return { success: true };
-        }
-      } catch (error) {
-        console.error(`[${AI_PROMPT_INJECTOR_NS}] Insert failed, trying clipboard:`, error);
-
-        const clipboardSuccess = await PromptInjector.copyToClipboard(message.text);
-        if (clipboardSuccess) {
-          showNotification('Could not insert directly. Content copied to clipboard!', 'info');
-          return { success: true, fallback: 'clipboard' };
-        } else {
-          showNotification('Insert failed and clipboard unavailable', 'error');
-          return { success: false, error: error.message };
-        }
-      }
+  const _t = {
+    en: {
+      inserted: 'Prompt inserted successfully!',
+      clipboard: 'Insertion failed. Prompt copied to clipboard.',
+      failed: 'Insert failed and clipboard unavailable'
+    },
+    fr: {
+      inserted: 'Prompt inséré avec succès !',
+      clipboard: 'Échec de l\'insertion. Prompt copié dans le presse-papiers.',
+      failed: 'Échec de l\'insertion et presse-papiers indisponible'
     }
+  };
+  const msg = _t[locale] || _t.en;
 
-    if (message.action === 'checkTarget') {
-      const target = PromptInjector.findTarget();
-      return {
-        hasTarget: !!target,
-        targetInfo: target ? {
-          tagName: target.tagName,
-          type: target.type || 'N/A',
-          isContentEditable: target.isContentEditable,
-          placeholder: target.placeholder || 'N/A'
-        } : null
-      };
+  window.PromptInjector.insertText(text).then(() => {
+    window.showNotification(msg.inserted, 'success');
+  }).catch(async (error) => {
+    const ok = await window.PromptInjector.copyToClipboard(text);
+    if (ok) {
+      window.showNotification(msg.clipboard, 'warning', 6000);
+    } else {
+      window.showNotification(msg.failed, 'error');
     }
   });
 }
-
-console.log(`[${AI_PROMPT_INJECTOR_NS}] Content script loaded on ${window.location.hostname}`);
