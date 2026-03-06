@@ -550,10 +550,10 @@ class PromptManager {
     actions.className = 'prompt-actions';
 
     const buttons = [
-      { class: 'btn btn--success btn--sm', text: t('btn.insert'), aria: t('aria.insertPrompt', prompt.label) },
-      { class: 'btn btn--primary btn--sm', text: t('btn.copy'), aria: t('aria.copyPrompt', prompt.label) },
-      { class: 'btn btn--sm', text: t('btn.edit'), aria: t('aria.editPrompt', prompt.label) },
-      { class: 'btn btn--danger btn--sm', text: t('btn.delete'), aria: t('aria.deletePrompt', prompt.label) }
+      { class: 'btn btn--success btn--sm insert-btn', text: t('btn.insert'), aria: t('aria.insertPrompt', prompt.label) },
+      { class: 'btn btn--primary btn--sm copy-btn', text: t('btn.copy'), aria: t('aria.copyPrompt', prompt.label) },
+      { class: 'btn btn--sm edit-btn', text: t('btn.edit'), aria: t('aria.editPrompt', prompt.label) },
+      { class: 'btn btn--danger btn--sm delete-btn', text: t('btn.delete'), aria: t('aria.deletePrompt', prompt.label) }
     ];
 
     buttons.forEach(btnConfig => {
