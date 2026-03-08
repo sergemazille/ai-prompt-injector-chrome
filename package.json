@@ -1,6 +1,6 @@
 {
   "name": "ai-prompt-injector",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "Manage and insert prompts into AI chat interfaces - Chrome Extension with Unit Tests",
   "type": "module",
   "scripts": {

@@ -176,3 +176,5 @@ function applyI18nToDOM() {
     el.setAttribute('aria-label', t(el.dataset.i18nAriaLabel));
   });
 }
+
+export { I18N_TRANSLATIONS, I18N_LOCALE, t, applyI18nToDOM };
