@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0
+
+### Changed
+- Convert popup scripts to ES modules (`import`/`export` instead of global `<script>` tags)
+
+## 1.3.1
+
+### Fixed
+- Prompt action buttons (Insert, Copy, Edit, Delete) not working due to missing functional classes in button definitions
+
 ## 1.3.0
 
 ### Added

@@ -1,3 +1,6 @@
+import { t, applyI18nToDOM, I18N_LOCALE } from './i18n.js';
+import { promptStorage } from './storage.js';
+
 class PromptManager {
   constructor() {
     this.currentEditId = null;
