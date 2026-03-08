@@ -148,9 +148,20 @@ class PromptManager {
       item.setAttribute('role', 'option');
       item.setAttribute('data-index', idx);
       
-      const regex = new RegExp(`(${searchTerm})`, 'gi');
-      const highlighted = tag.replace(regex, '<span class="tag-match">$1</span>');
-      item.innerHTML = highlighted;
+      const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`(${escapedTerm})`, 'gi');
+      const parts = tag.split(regex);
+      parts.forEach(part => {
+        if (regex.test(part)) {
+          const span = document.createElement('span');
+          span.className = 'tag-match';
+          span.textContent = part;
+          item.appendChild(span);
+        } else if (part) {
+          item.appendChild(document.createTextNode(part));
+        }
+        regex.lastIndex = 0;
+      });
       
       item.addEventListener('click', () => this.selectTag(tag));
       container.appendChild(item);
@@ -220,11 +231,14 @@ class PromptManager {
       const list = document.getElementById('backup-list');
       
       if (!backups || backups.length === 0) {
-        list.innerHTML = `<div class="empty-state">${t('backup.empty')}</div>`;
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'empty-state';
+        emptyDiv.textContent = t('backup.empty');
+        list.replaceChildren(emptyDiv);
         return;
       }
 
-      list.innerHTML = '';
+      list.replaceChildren();
       backups.forEach(backup => {
         const item = document.createElement('div');
         item.className = 'backup-item';
@@ -232,16 +246,25 @@ class PromptManager {
         const date = new Date(backup.timestamp).toLocaleString();
         const reason = t(`backup.reason.${backup.reason}`) || backup.reason;
         
-        item.innerHTML = `
-          <div class="backup-item-info">
-            <span class="backup-item-date">${date}</span>
-            <span class="backup-item-reason">${reason}</span>
-            <span class="backup-item-count">${backup.promptCount} prompts</span>
-          </div>
-          <button class="btn btn--sm btn--primary" data-id="${backup.id}">${t('btn.restore')}</button>
-        `;
+        const info = document.createElement('div');
+        info.className = 'backup-item-info';
+        const dateSpan = document.createElement('span');
+        dateSpan.className = 'backup-item-date';
+        dateSpan.textContent = date;
+        const reasonSpan = document.createElement('span');
+        reasonSpan.className = 'backup-item-reason';
+        reasonSpan.textContent = reason;
+        const countSpan = document.createElement('span');
+        countSpan.className = 'backup-item-count';
+        countSpan.textContent = `${backup.promptCount} prompts`;
+        info.append(dateSpan, reasonSpan, countSpan);
+        const btn = document.createElement('button');
+        btn.className = 'btn btn--sm btn--primary';
+        btn.dataset.id = backup.id;
+        btn.textContent = t('btn.restore');
+        item.append(info, btn);
         
-        item.querySelector('button').addEventListener('click', () => this.restoreBackup(backup.id));
+        btn.addEventListener('click', () => this.restoreBackup(backup.id));
         list.appendChild(item);
       });
     } catch (error) {

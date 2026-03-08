@@ -122,6 +122,7 @@ Since no data is collected or transmitted to any servers, there is no risk of da
 ## Compliance
 
 This extension is designed to comply with:
+- Chrome Web Store Developer Program Policies
 - Mozilla's Add-on Policies
 - GDPR (General Data Protection Regulation)
 - CCPA (California Consumer Privacy Act)

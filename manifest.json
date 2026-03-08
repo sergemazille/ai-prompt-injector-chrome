@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AI Prompt Injector",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Manage and insert prompts into AI chat interfaces",
   "icons": {
     "16": "icons/icon16.png",
