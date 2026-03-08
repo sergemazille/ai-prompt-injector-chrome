@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.1
+
+### Fixed
+- Replace remaining `innerHTML` with DOM construction in tag autocomplete and backup list
+- Escape regex special characters in tag search to prevent crashes on special inputs
+
+### Changed
+- Add Chrome Web Store Developer Program Policies to PRIVACY.md compliance section
+
 ## 1.4.0
 
 ### Changed
