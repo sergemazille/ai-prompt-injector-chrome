@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1
+
+### Fixed
+- Prompt action buttons (Insert, Copy, Edit, Delete) not working due to missing functional classes in button definitions
+
 ## 1.3.0
 
 ### Added
