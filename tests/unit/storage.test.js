@@ -307,13 +307,30 @@ describe('PromptStorage', () => {
 
     it('imports createdAt timestamp', async () => {
       const json = JSON.stringify({ prompts: [{ label: 'Test', template: 'Content', createdAt: 1234567890 }] })
-      
+
       const result = await storage.importPrompts(json)
       expect(result.imported).toBe(1)
-      
+
       const prompts = await storage.getPrompts()
       expect(prompts[0].createdAt).toBe(1234567890)
     })
+
+    it('rejects JSON exceeding 5 MB', async () => {
+      const huge = JSON.stringify({ prompts: [{ label: 'x'.repeat(6_000_000), template: 'y' }] });
+      await expect(storage.importPrompts(huge)).rejects.toThrow('exceeds maximum');
+    });
+
+    it('limits import to 500 prompts', async () => {
+      const prompts = Array.from({ length: 600 }, (_, i) => ({
+        label: `Prompt ${i}`,
+        template: `Content ${i}`
+      }));
+      const json = JSON.stringify({ prompts });
+      const result = await storage.importPrompts(json);
+
+      expect(result.imported).toBeLessThanOrEqual(500);
+      expect(result.limited).toBe(true);
+    });
   })
 
   describe('createBackup', () => {

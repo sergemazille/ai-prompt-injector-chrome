@@ -191,6 +191,13 @@ class PromptStorage {
   }
 
   async importPrompts(jsonData) {
+  const MAX_IMPORT_SIZE = 5 * 1024 * 1024; // 5 MB
+  const MAX_IMPORT_COUNT = 500;
+
+  if (jsonData.length > MAX_IMPORT_SIZE) {
+    throw new Error(`Import data exceeds maximum size of 5 MB`);
+  }
+
   try {
     const data = JSON.parse(jsonData);
     let promptsArray = null;
@@ -198,6 +205,13 @@ class PromptStorage {
     else if (Array.isArray(data)) promptsArray = data;
     else if (data && typeof data === 'object' && Array.isArray(data.data)) promptsArray = data.data;
     else throw new Error('Invalid file format: expected {"prompts":[...]} or an array');
+
+    const originalTotal = promptsArray.length;
+    let limited = false;
+    if (promptsArray.length > MAX_IMPORT_COUNT) {
+      promptsArray = promptsArray.slice(0, MAX_IMPORT_COUNT);
+      limited = true;
+    }
 
     const existingPrompts = await this.getPrompts();
     const existingTitles = new Set(existingPrompts.map(p => (p.label || '').toLowerCase().trim()));
@@ -255,7 +269,7 @@ class PromptStorage {
 
     await chrome.storage.local.set({ [this.storageKey]: existingPrompts });
     this._invalidateCache();
-    return { imported, total: promptsArray.length };
+    return { imported, total: originalTotal, limited };
   } catch (error) {
     if (error instanceof SyntaxError) throw new Error('Invalid JSON file');
     throw error;
