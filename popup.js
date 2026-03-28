@@ -728,18 +728,17 @@ class PromptManager {
 
       const tabId = tabs[0].id;
 
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        func: (text, locale) => {
-          window._aiPromptPending = text;
-          window._aiPromptLocale = locale;
-        },
-        args: [prompt.template, I18N_LOCALE]
-      });
-
+      // Inject content script (idempotent - load guard prevents re-init)
       await chrome.scripting.executeScript({
         target: { tabId },
         files: ['content.js']
+      });
+
+      // Send injection command via Chrome message API
+      await chrome.tabs.sendMessage(tabId, {
+        type: 'inject',
+        text: prompt.template,
+        locale: I18N_LOCALE
       });
 
       window.close();

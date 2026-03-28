@@ -1,9 +1,22 @@
 if (!window._aiPromptInjectorLoaded) {
 window._aiPromptInjectorLoaded = true;
 
-const AI_PROMPT_INJECTOR_NS = 'ai_prompt_injector';
+(() => {
 
-window.PromptInjector = {
+const TRANSLATIONS = {
+  en: {
+    inserted: 'Prompt inserted successfully!',
+    clipboard: 'Insertion failed. Prompt copied to clipboard.',
+    failed: 'Insert failed and clipboard unavailable'
+  },
+  fr: {
+    inserted: 'Prompt inséré avec succès !',
+    clipboard: 'Échec de l\'insertion. Prompt copié dans le presse-papiers.',
+    failed: 'Échec de l\'insertion et presse-papiers indisponible'
+  }
+};
+
+const PromptInjector = {
   selectors: [
     '#prompt-textarea',
     'textarea[placeholder*="message"]',
@@ -106,11 +119,7 @@ window.PromptInjector = {
       element.textContent = text;
     }
 
-    const events = ['input', 'change', 'keyup', 'paste'];
-    events.forEach(eventType => {
-      element.dispatchEvent(new Event(eventType, { bubbles: true, cancelable: true }));
-    });
-
+    element.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
     element.dispatchEvent(new InputEvent('input', {
       bubbles: true,
       cancelable: true,
@@ -123,11 +132,7 @@ window.PromptInjector = {
     element.focus();
     element.value = text;
 
-    const events = ['input', 'change', 'keyup', 'paste'];
-    events.forEach(eventType => {
-      element.dispatchEvent(new Event(eventType, { bubbles: true, cancelable: true }));
-    });
-
+    element.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
     element.dispatchEvent(new InputEvent('input', {
       bubbles: true,
       cancelable: true,
@@ -185,7 +190,7 @@ window.PromptInjector = {
   }
 };
 
-window.showNotification = function(message, type = 'info', duration = 4000) {
+function showNotification(message, type = 'info', duration = 4000) {
   const notification = document.createElement('div');
   notification.style.cssText = `
     position: fixed;
@@ -211,38 +216,30 @@ window.showNotification = function(message, type = 'info', duration = 4000) {
       notification.parentNode.removeChild(notification);
     }
   }, duration);
-};
-
 }
 
-if (window._aiPromptPending) {
-  const text = window._aiPromptPending;
-  const locale = window._aiPromptLocale || 'en';
-  delete window._aiPromptPending;
-  delete window._aiPromptLocale;
+async function handleInjection(text, locale) {
+  const msg = TRANSLATIONS[locale] || TRANSLATIONS.en;
 
-  const _t = {
-    en: {
-      inserted: 'Prompt inserted successfully!',
-      clipboard: 'Insertion failed. Prompt copied to clipboard.',
-      failed: 'Insert failed and clipboard unavailable'
-    },
-    fr: {
-      inserted: 'Prompt inséré avec succès !',
-      clipboard: 'Échec de l\'insertion. Prompt copié dans le presse-papiers.',
-      failed: 'Échec de l\'insertion et presse-papiers indisponible'
-    }
-  };
-  const msg = _t[locale] || _t.en;
-
-  window.PromptInjector.insertText(text).then(() => {
-    window.showNotification(msg.inserted, 'success');
-  }).catch(async (error) => {
-    const ok = await window.PromptInjector.copyToClipboard(text);
+  try {
+    await PromptInjector.insertText(text);
+    showNotification(msg.inserted, 'success');
+  } catch (error) {
+    const ok = await PromptInjector.copyToClipboard(text);
     if (ok) {
-      window.showNotification(msg.clipboard, 'warning', 6000);
+      showNotification(msg.clipboard, 'warning', 6000);
     } else {
-      window.showNotification(msg.failed, 'error');
+      showNotification(msg.failed, 'error');
     }
-  });
+  }
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'inject') {
+    handleInjection(message.text, message.locale);
+  }
+});
+
+})();
+
 }
