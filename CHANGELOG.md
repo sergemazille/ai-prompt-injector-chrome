@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.5.0
+
+### Security
+- Content script encapsulated in IIFE — `PromptInjector` and `showNotification` no longer exposed on `window`
+- Replace `window._aiPromptPending` data passing with `chrome.runtime.onMessage` / `chrome.tabs.sendMessage`
+- Add import limits: 5 MB max file size, 500 prompts max per import
+- Build script uses explicit JS file list and safe Python argument passing (no shell interpolation)
+
+### Performance
+- In-memory cache in `PromptStorage` with automatic invalidation on writes
+- Combined `loadPromptsAndTags()` replaces separate `loadPrompts()` + `loadTags()` (1 storage read instead of 2-3)
+- Search debounce (200ms) prevents cascading DOM updates
+- DOM visibility toggle for search/filter instead of full rebuild
+- CSS theme variables deduplicated (4 blocks → 3)
+- Replace `JSON.parse(JSON.stringify())` with `structuredClone` for backup cloning
+
+### Changed
+- `background.js` imports from `storage.js` instead of duplicating backup logic
+- Theme state stored in `this.currentTheme` property instead of reading emoji from DOM
+- Synthetic events reduced from 5 to 2 per insertion (`Event('input')` + `InputEvent`)
+- Unit tests rewritten to import and test real production code
+
+### Removed
+- Dead test wrappers using `eval()` and `new Function()`
+- Unused `getPromptById` call in `toggleFavorite`
+- Redundant `[data-theme="light"]` CSS block
+
 ## 1.4.1
 
 ### Fixed

@@ -49,18 +49,21 @@ npm run test:run   # Single test run
 
 **Storage Layer (`storage.js`)**
 - `PromptStorage` class manages local storage with `chrome.storage.local`
+- **In-memory cache** with automatic invalidation on writes
 - Handles prompt CRUD operations with automatic data normalization
 - Export format: `{version, exported, prompts[]}` with backward compatibility
-- Import system supports multiple JSON formats with field mapping
+- Import system supports multiple JSON formats with field mapping (5 MB / 500 prompt limits)
 - **Backup system**: Automatic backups (max 3), 1h anti-spam, restore functionality
+- `extractTags()` utility function for deriving sorted unique tags from prompts
 
 **Content Injection (`content.js`)**
-- `PromptInjector` (global) handles DOM insertion across different AI chat interfaces
+- IIFE-encapsulated module with load guard (no window globals)
+- `PromptInjector` (local) handles DOM insertion across different AI chat interfaces
 - Domain-specific selectors with fallback to generic patterns
 - **3-tier insertion**: direct DOM → execCommand('insertText') → clipboard fallback
 - Supports: ChatGPT, Claude, Gemini, Mistral, DeepSeek, Grok, Qwen, Dust, NotebookLM, Google AI Studio
-- **Load guard**: Prevents duplicate execution
-- **Global exposure**: window.PromptInjector, window.showNotification
+- **Load guard**: Prevents duplicate execution via `window._aiPromptInjectorLoaded`
+- **Message-based**: Receives injection commands via `chrome.runtime.onMessage`
 
 **Popup Interface (`popup.js` + HTML/CSS)**
 - `PromptManager` class orchestrates UI state and user interactions
@@ -78,6 +81,7 @@ npm run test:run   # Single test run
 - `applyI18nToDOM()` for DOM element translation
 
 **Background Script (`background.js`)**
+- Imports `promptStorage` from `storage.js` (no duplicated logic)
 - Auto-backup on browser startup
 - Auto-backup on extension update
 
@@ -98,7 +102,7 @@ npm run test:run   # Single test run
 ### Injection Strategy
 
 1. **On-demand injection**: Uses `chrome.scripting.executeScript` (no content_scripts in manifest)
-2. **Pending injection**: Popup passes data via `window._aiPromptPending`, `window._aiPromptLocale`
+2. **Message-based data passing**: Popup sends `{type: 'inject', text, locale}` via `chrome.tabs.sendMessage`
 3. **3-tier insertion**:
    - Tier 1: Direct DOM (innerText/textContent)
    - Tier 2: execCommand('insertText')
