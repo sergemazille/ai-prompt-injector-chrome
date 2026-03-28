@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.5.1
+
+### Fixed
+- Editing a prompt title now updates the card immediately (was requiring popup reopen)
+- Favorite star now toggles visually with a single prompt (was only working with 2+ prompts)
+- Clipboard fallback on non-injectable pages copies actual prompt text (was copying "undefined")
+- Clipboard fallback notification now visible (popup stays open instead of closing immediately)
+- Escape key in tag autocomplete closes dropdown only, not the entire popup
+- Edit form now hides prompt list underneath (cosmetic fix)
+
+### Changed
+- Remove premature DOM rebuild optimization in `renderPrompts()` — always rebuild for correctness
+- Move prompt retrieval outside try/catch in `insertPrompt()` to fix variable scoping
+- Export `PromptManager` class for testability
+
+### Added
+- Regression tests for all 5 bug fixes (84 total tests, up from 79)
+- `chrome.scripting` mock in test infrastructure
+
 ## 1.5.0
 
 ### Security

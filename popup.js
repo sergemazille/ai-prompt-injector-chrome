@@ -196,6 +196,8 @@ class PromptManager {
         this.selectTag(selectedTag);
       }
     } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
       this.hideTagSuggestions();
     }
   }
@@ -409,11 +411,13 @@ class PromptManager {
     }
 
     form.classList.remove('hidden');
+    document.getElementById('prompt-list').style.display = 'none';
     titleInput.focus();
   }
 
   hideForm() {
     document.getElementById('prompt-form').classList.add('hidden');
+    document.getElementById('prompt-list').style.display = '';
     this.currentEditId = null;
     this.hideTagSuggestions();
   }
@@ -503,18 +507,11 @@ class PromptManager {
 
     emptyState.classList.add('hidden');
 
-    // Rebuild DOM only if prompt data changed (different IDs or count)
-    const currentIds = Array.from(container.querySelectorAll('.prompt-item')).map(el => el.dataset.id);
-    const newIds = prompts.map(p => p.id);
-    const needsRebuild = currentIds.length !== newIds.length || currentIds.some((id, i) => id !== newIds[i]);
-
-    if (needsRebuild) {
-      container.replaceChildren();
-      prompts.forEach(prompt => {
-        const element = this.createPromptElementDOM(prompt);
-        container.appendChild(element);
-      });
-    }
+    container.replaceChildren();
+    prompts.forEach(prompt => {
+      const element = this.createPromptElementDOM(prompt);
+      container.appendChild(element);
+    });
 
     // Apply filter/search visibility
     let visibleCount = 0;
@@ -728,12 +725,10 @@ class PromptManager {
   }
 
   async insertPrompt(promptId) {
-    try {
-      const prompt = await promptStorage.getPromptById(promptId);
-      if (!prompt) {
-        return;
-      }
+    const prompt = await promptStorage.getPromptById(promptId);
+    if (!prompt) return;
 
+    try {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tabs.length === 0) {
         alert(t('alert.noActiveTab'));
@@ -760,7 +755,6 @@ class PromptManager {
       console.error('Error inserting prompt:', error);
       await this.copyToClipboard(prompt.template);
       this.showNotification(t('notify.cannotInject'), 'warning');
-      window.close();
     }
   }
 
@@ -833,6 +827,8 @@ class PromptManager {
     }
   }
 }
+
+export { PromptManager };
 
 document.addEventListener('DOMContentLoaded', () => {
   const manager = new PromptManager();

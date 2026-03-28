@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { promptStorage, extractTags } from '../../storage.js'
+import { PromptManager } from '../../popup.js'
 
 function setupDOM() {
   document.body.innerHTML = `
@@ -121,5 +122,90 @@ describe('Theme Application', () => {
     expect(cycle('auto')).toBe('light')
     expect(cycle('light')).toBe('dark')
     expect(cycle('dark')).toBe('auto')
+  })
+})
+
+describe('Bugfix Regressions', () => {
+  let manager
+
+  beforeEach(() => {
+    chrome.storage.local.clear()
+    promptStorage._invalidateCache()
+    setupDOM()
+    manager = new PromptManager()
+  })
+
+  describe('Fix 1+2: renderPrompts always rebuilds DOM', () => {
+    it('updates title in DOM after editing a prompt', async () => {
+      const saved = await promptStorage.savePrompt({ label: 'Original', template: 'Content', tags: [] })
+      const prompts = await promptStorage.getPrompts()
+      manager.renderPrompts(prompts)
+
+      expect(document.querySelector('.prompt-title').textContent).toBe('Original')
+
+      await promptStorage.savePrompt({ id: saved.id, label: 'Updated', template: 'Content', tags: [] })
+      const updated = await promptStorage.getPrompts()
+      manager.renderPrompts(updated)
+
+      expect(document.querySelector('.prompt-title').textContent).toBe('Updated')
+    })
+
+    it('updates favorite star in DOM with single prompt', async () => {
+      await promptStorage.savePrompt({ label: 'Solo', template: 'Content', favorite: false })
+      const prompts = await promptStorage.getPrompts()
+      manager.renderPrompts(prompts)
+
+      expect(document.querySelector('.favorite-star').textContent).toBe('☆')
+
+      await promptStorage.toggleFavorite(prompts[0].id)
+      const updated = await promptStorage.getPrompts()
+      manager.renderPrompts(updated)
+
+      expect(document.querySelector('.favorite-star').textContent).toBe('★')
+    })
+  })
+
+  describe('Fix 3: insertPrompt clipboard fallback', () => {
+    it('copies actual prompt text on injection failure', async () => {
+      const saved = await promptStorage.savePrompt({ label: 'Test', template: 'My prompt text' })
+      chrome.scripting.executeScript.mockRejectedValue(new Error('Cannot inject'))
+      const closeSpy = vi.spyOn(window, 'close').mockImplementation(() => {})
+
+      await manager.insertPrompt(saved.id)
+
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('My prompt text')
+      expect(closeSpy).not.toHaveBeenCalled()
+      closeSpy.mockRestore()
+    })
+  })
+
+  describe('Fix 4: Escape in tag autocomplete', () => {
+    it('prevents popup close when closing tag suggestions', () => {
+      const container = document.getElementById('tag-suggestions')
+      container.classList.remove('hidden')
+      container.innerHTML = '<div class="tag-suggestion-item">dev</div>'
+
+      const event = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
+      const preventSpy = vi.spyOn(event, 'preventDefault')
+      const stopSpy = vi.spyOn(event, 'stopPropagation')
+
+      manager.handleTagKeydown(event)
+
+      expect(preventSpy).toHaveBeenCalled()
+      expect(stopSpy).toHaveBeenCalled()
+      expect(container.classList.contains('hidden')).toBe(true)
+    })
+  })
+
+  describe('Fix 5: Form hides prompt list', () => {
+    it('hides prompt list when form opens and restores on close', () => {
+      const promptList = document.getElementById('prompt-list')
+
+      manager.showForm()
+      expect(promptList.style.display).toBe('none')
+
+      manager.hideForm()
+      expect(promptList.style.display).toBe('')
+    })
   })
 })

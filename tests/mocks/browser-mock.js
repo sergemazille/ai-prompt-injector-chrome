@@ -63,6 +63,11 @@ const createTabsMock = () => ({
   query: vi.fn(() => Promise.resolve([{ id: 1, url: 'https://chatgpt.com' }]))
 })
 
+// Mock of scripting (content script injection)
+const createScriptingMock = () => ({
+  executeScript: vi.fn(() => Promise.resolve([]))
+})
+
 // Mock of action (popup)
 const createActionMock = () => ({
   onClicked: {
@@ -78,6 +83,7 @@ export const chromeMock = {
   },
   runtime: createRuntimeMock(),
   tabs: createTabsMock(),
+  scripting: createScriptingMock(),
   action: createActionMock(),
   
   // Utility method to reset all mocks
