@@ -86,7 +86,11 @@ class PromptManager {
       } else if (id === 'tag-filter') {
         element.addEventListener('change', handler);
       } else if (id === 'search-input') {
-        element.addEventListener('input', handler);
+        let debounceTimer;
+        element.addEventListener('input', (e) => {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => handler(e), 200);
+        });
       } else {
         element.addEventListener('click', handler);
       }
@@ -492,41 +496,62 @@ class PromptManager {
     const emptyState = document.getElementById('empty-state');
 
     if (!prompts || prompts.length === 0) {
-      container.innerHTML = '';
+      container.replaceChildren();
       emptyState.classList.remove('hidden');
       return;
     }
 
     emptyState.classList.add('hidden');
 
-    let filteredPrompts = prompts;
+    // Rebuild DOM only if prompt data changed (different IDs or count)
+    const currentIds = Array.from(container.querySelectorAll('.prompt-item')).map(el => el.dataset.id);
+    const newIds = prompts.map(p => p.id);
+    const needsRebuild = currentIds.length !== newIds.length || currentIds.some((id, i) => id !== newIds[i]);
 
-    if (this.currentSearchFilter) {
-      filteredPrompts = filteredPrompts.filter(prompt =>
-        prompt.label.toLowerCase().includes(this.currentSearchFilter)
-      );
+    if (needsRebuild) {
+      container.replaceChildren();
+      prompts.forEach(prompt => {
+        const element = this.createPromptElementDOM(prompt);
+        container.appendChild(element);
+      });
     }
 
-    if (this.currentFilter) {
-      filteredPrompts = filteredPrompts.filter(prompt =>
-        prompt.tags && prompt.tags.includes(this.currentFilter)
-      );
-    }
+    // Apply filter/search visibility
+    let visibleCount = 0;
+    const items = container.querySelectorAll('.prompt-item');
+    items.forEach(item => {
+      const id = item.dataset.id;
+      const prompt = prompts.find(p => p.id === id);
+      if (!prompt) {
+        item.classList.add('hidden');
+        return;
+      }
 
-    if (filteredPrompts.length === 0) {
-      container.innerHTML = '';
-      const noResults = document.createElement('div');
-      noResults.className = 'no-results';
-      noResults.textContent = t('filter.noResults');
-      container.appendChild(noResults);
-      return;
-    }
+      let visible = true;
+      if (this.currentSearchFilter) {
+        visible = prompt.label.toLowerCase().includes(this.currentSearchFilter);
+      }
+      if (visible && this.currentFilter) {
+        visible = prompt.tags && prompt.tags.includes(this.currentFilter);
+      }
 
-    container.innerHTML = '';
-    filteredPrompts.forEach(prompt => {
-      const element = this.createPromptElementDOM(prompt);
-      container.appendChild(element);
+      item.classList.toggle('hidden', !visible);
+      if (visible) visibleCount++;
     });
+
+    // Show "no results" if all filtered out
+    let noResults = container.querySelector('.no-results');
+    if (visibleCount === 0) {
+      if (!noResults) {
+        noResults = document.createElement('div');
+        noResults.className = 'no-results';
+        noResults.textContent = t('filter.noResults');
+        container.appendChild(noResults);
+      }
+      noResults.classList.remove('hidden');
+    } else if (noResults) {
+      noResults.classList.add('hidden');
+    }
   }
 
   createPromptElementDOM(prompt) {
