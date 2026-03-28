@@ -480,7 +480,10 @@ class PromptManager {
       const select = document.getElementById('tag-filter');
       const currentValue = select.value;
 
-      select.innerHTML = `<option value="">${t('filter.allTags')}</option>`;
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = t('filter.allTags');
+      select.replaceChildren(defaultOption);
 
       this.allTags.forEach(tag => {
         const option = document.createElement('option');
@@ -804,7 +807,6 @@ class PromptManager {
 
   async toggleFavorite(promptId) {
     try {
-      const prompt = await promptStorage.getPromptById(promptId);
       const newFavoriteStatus = await promptStorage.toggleFavorite(promptId);
       await this.loadPrompts();
 

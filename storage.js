@@ -269,7 +269,7 @@ class PromptStorage {
         date: new Date().toISOString(),
         reason,
         promptCount: prompts.length,
-        prompts: JSON.parse(JSON.stringify(prompts))
+        prompts: structuredClone(prompts)
       };
 
       backups.unshift(backup);

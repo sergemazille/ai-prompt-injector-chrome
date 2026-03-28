@@ -44,6 +44,7 @@ window.PromptInjector = {
           }
         }
       } catch (error) {
+        console.debug('[AI Prompt Injector] Selector failed:', selector, error.message);
       }
     }
 
@@ -83,12 +84,14 @@ window.PromptInjector = {
       }
       return true;
     } catch (error) {
+      console.debug('[AI Prompt Injector] Primary insertion failed:', error.message);
     }
 
     try {
       this.insertViaExecCommand(target, text);
       return true;
     } catch (error) {
+      console.debug('[AI Prompt Injector] execCommand insertion failed:', error.message);
     }
 
     throw new Error('All insertion methods failed');
@@ -176,6 +179,7 @@ window.PromptInjector = {
         }
       }
     } catch (error) {
+      console.debug('[AI Prompt Injector] Clipboard write failed:', error.message);
     }
     return false;
   }
