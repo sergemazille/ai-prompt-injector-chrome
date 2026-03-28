@@ -8,6 +8,7 @@ class PromptManager {
     this.currentSearchFilter = '';
     this.allTags = [];
     this.tagSuggestionIndex = -1;
+    this.currentTheme = 'auto';
     this.init();
   }
 
@@ -29,11 +30,11 @@ class PromptManager {
   async initTheme() {
     try {
       const result = await chrome.storage.local.get(['theme']);
-      const theme = result.theme || 'auto';
-      this.applyTheme(theme);
+      this.currentTheme = result.theme || 'auto';
     } catch (error) {
-      this.applyTheme('auto');
+      this.currentTheme = 'auto';
     }
+    this.applyTheme(this.currentTheme);
   }
 
   applyTheme(theme) {
@@ -55,16 +56,11 @@ class PromptManager {
 
   cycleTheme() {
     const themes = ['auto', 'light', 'dark'];
-    const currentBtn = document.getElementById('theme-toggle');
-    let current = 'auto';
-    if (currentBtn.textContent === '☀️') current = 'light';
-    else if (currentBtn.textContent === '🌙') current = 'dark';
-    
-    const idx = themes.indexOf(current);
-    const next = themes[(idx + 1) % themes.length];
-    
-    this.applyTheme(next);
-    chrome.storage.local.set({ theme: next });
+    const idx = themes.indexOf(this.currentTheme);
+    this.currentTheme = themes[(idx + 1) % themes.length];
+
+    this.applyTheme(this.currentTheme);
+    chrome.storage.local.set({ theme: this.currentTheme });
   }
 
   bindEvents() {
