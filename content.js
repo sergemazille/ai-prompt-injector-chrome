@@ -237,6 +237,7 @@ async function handleInjection(text, locale) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'inject') {
     handleInjection(message.text, message.locale);
+    sendResponse({ success: true });
   }
 });
 
