@@ -1,5 +1,5 @@
 import { t, applyI18nToDOM, I18N_LOCALE } from './i18n.js';
-import { promptStorage } from './storage.js';
+import { promptStorage, extractTags } from './storage.js';
 
 class PromptManager {
   constructor() {
@@ -16,8 +16,7 @@ class PromptManager {
     await this.initTheme();
     applyI18nToDOM();
     this.bindEvents();
-    await this.loadPrompts();
-    await this.loadTags();
+    await this.loadPromptsAndTags();
 
     setTimeout(() => {
       const searchInput = document.getElementById('search-input');
@@ -273,8 +272,7 @@ class PromptManager {
     
     try {
       await promptStorage.restoreBackup(backupId);
-      await this.loadPrompts();
-      await this.loadTags();
+      await this.loadPromptsAndTags();
       this.showNotification(t('notify.restored', 0), 'success');
       this.toggleBackupPanel();
     } catch (error) {
@@ -453,44 +451,40 @@ class PromptManager {
     try {
       await promptStorage.savePrompt(prompt);
       this.hideForm();
-      await this.loadPrompts();
-      await this.loadTags();
+      await this.loadPromptsAndTags();
     } catch (error) {
       console.error('Error saving prompt:', error);
       alert(t('alert.saveError'));
     }
   }
 
-  async loadPrompts() {
+  async loadPromptsAndTags() {
     try {
       const prompts = await promptStorage.getPrompts();
+      this.allTags = extractTags(prompts);
       this.renderPrompts(prompts);
+      this.renderTagFilter();
     } catch (error) {
-      console.error('Error loading prompts:', error);
+      console.error('Error loading:', error);
     }
   }
 
-  async loadTags() {
-    try {
-      this.allTags = await promptStorage.getAllTags();
-      const select = document.getElementById('tag-filter');
-      const currentValue = select.value;
+  renderTagFilter() {
+    const select = document.getElementById('tag-filter');
+    const currentValue = select.value;
 
-      const defaultOption = document.createElement('option');
-      defaultOption.value = '';
-      defaultOption.textContent = t('filter.allTags');
-      select.replaceChildren(defaultOption);
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = t('filter.allTags');
+    select.replaceChildren(defaultOption);
 
-      this.allTags.forEach(tag => {
-        const option = document.createElement('option');
-        option.value = tag;
-        option.textContent = tag;
-        if (tag === currentValue) option.selected = true;
-        select.appendChild(option);
-      });
-    } catch (error) {
-      console.error('Error loading tags:', error);
-    }
+    this.allTags.forEach(tag => {
+      const option = document.createElement('option');
+      option.value = tag;
+      option.textContent = tag;
+      if (tag === currentValue) option.selected = true;
+      select.appendChild(option);
+    });
   }
 
   renderPrompts(prompts) {
@@ -599,12 +593,12 @@ class PromptManager {
 
   async filterPrompts(tag) {
     this.currentFilter = tag;
-    await this.loadPrompts();
+    await this.loadPromptsAndTags();
   }
 
   async searchPrompts(searchTerm) {
     this.currentSearchFilter = searchTerm.toLowerCase().trim();
-    await this.loadPrompts();
+    await this.loadPromptsAndTags();
   }
 
   async exportPrompts() {
@@ -694,8 +688,7 @@ class PromptManager {
         this.showNotification(t('notify.importedPartial', result.imported, result.total));
       }
 
-      await this.loadPrompts();
-      await this.loadTags();
+      await this.loadPromptsAndTags();
 
       const dropZone = document.getElementById('drop-zone');
       if (dropZone && !dropZone.classList.contains('hidden')) {
@@ -792,8 +785,7 @@ class PromptManager {
 
     try {
       await promptStorage.deletePrompt(promptId);
-      await this.loadPrompts();
-      await this.loadTags();
+      await this.loadPromptsAndTags();
     } catch (error) {
       console.error('Error deleting prompt:', error);
       alert(t('alert.deleteError'));
@@ -803,7 +795,7 @@ class PromptManager {
   async toggleFavorite(promptId) {
     try {
       const newFavoriteStatus = await promptStorage.toggleFavorite(promptId);
-      await this.loadPrompts();
+      await this.loadPromptsAndTags();
 
       if (newFavoriteStatus) {
         this.showNotification(t('notify.addedFavorite'), 'success');
