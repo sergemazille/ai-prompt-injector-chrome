@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { promptStorage as storage } from '../../storage.js'
+import { promptStorage as storage, extractTags } from '../../storage.js'
 
 describe('PromptStorage', () => {
   beforeEach(() => {
     chrome.storage.local.clear()
+    storage._invalidateCache()
   })
 
   describe('generateId', () => {
@@ -306,13 +307,30 @@ describe('PromptStorage', () => {
 
     it('imports createdAt timestamp', async () => {
       const json = JSON.stringify({ prompts: [{ label: 'Test', template: 'Content', createdAt: 1234567890 }] })
-      
+
       const result = await storage.importPrompts(json)
       expect(result.imported).toBe(1)
-      
+
       const prompts = await storage.getPrompts()
       expect(prompts[0].createdAt).toBe(1234567890)
     })
+
+    it('rejects JSON exceeding 5 MB', async () => {
+      const huge = JSON.stringify({ prompts: [{ label: 'x'.repeat(6_000_000), template: 'y' }] });
+      await expect(storage.importPrompts(huge)).rejects.toThrow('exceeds maximum');
+    });
+
+    it('limits import to 500 prompts', async () => {
+      const prompts = Array.from({ length: 600 }, (_, i) => ({
+        label: `Prompt ${i}`,
+        template: `Content ${i}`
+      }));
+      const json = JSON.stringify({ prompts });
+      const result = await storage.importPrompts(json);
+
+      expect(result.imported).toBeLessThanOrEqual(500);
+      expect(result.limited).toBe(true);
+    });
   })
 
   describe('createBackup', () => {
@@ -400,17 +418,114 @@ describe('PromptStorage', () => {
     it('creates pre-restore backup', async () => {
       await storage.savePrompt({ label: 'Test', template: 'Content' })
       await storage.createBackup('initial')
-      
+
       const backups = await storage.getBackups()
       const initialCount = backups.length
-      
+
       vi.useFakeTimers()
       vi.setSystemTime(Date.now() + 4000000)
       await storage.restoreBackup(backups[0].id)
       vi.useRealTimers()
-      
+
       const newBackups = await storage.getBackups()
       expect(newBackups.length).toBe(initialCount + 1)
     })
   })
+
+  describe('Cache', () => {
+    it('returns cached prompts on second call without re-reading storage', async () => {
+      await storage.savePrompt({ label: 'Test', template: 'Content' });
+
+      const spy = vi.spyOn(chrome.storage.local, 'get');
+      spy.mockClear();
+
+      await storage.getPrompts();
+      await storage.getPrompts();
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      spy.mockRestore();
+    });
+
+    it('invalidates cache after savePrompt', async () => {
+      await storage.savePrompt({ label: 'Test', template: 'Content' });
+      await storage.getPrompts(); // populate cache
+
+      const spy = vi.spyOn(chrome.storage.local, 'get');
+      spy.mockClear();
+
+      await storage.savePrompt({ label: 'Test 2', template: 'Content 2' });
+      await storage.getPrompts();
+
+      expect(spy.mock.calls.length).toBeGreaterThanOrEqual(1);
+      spy.mockRestore();
+    });
+
+    it('invalidates cache after deletePrompt', async () => {
+      const saved = await storage.savePrompt({ label: 'Test', template: 'Content' });
+      await storage.getPrompts(); // populate cache
+
+      await storage.deletePrompt(saved.id);
+      const prompts = await storage.getPrompts();
+
+      expect(prompts).toHaveLength(0);
+    });
+
+    it('invalidates cache after toggleFavorite', async () => {
+      const saved = await storage.savePrompt({ label: 'Test', template: 'Content' });
+      await storage.getPrompts(); // populate cache
+
+      await storage.toggleFavorite(saved.id);
+      const prompts = await storage.getPrompts();
+
+      expect(prompts[0].favorite).toBe(true);
+    });
+
+    it('invalidates cache after importPrompts', async () => {
+      await storage.savePrompt({ label: 'Existing', template: 'Content' });
+      await storage.getPrompts(); // populate cache
+
+      const json = JSON.stringify({ prompts: [{ label: 'Imported', template: 'Content' }] });
+      await storage.importPrompts(json);
+      const prompts = await storage.getPrompts();
+
+      expect(prompts.some(p => p.label === 'Imported')).toBe(true);
+    });
+
+    it('invalidates cache after restoreBackup', async () => {
+      await storage.savePrompt({ label: 'Original', template: 'Content' });
+      await storage.createBackup('test');
+      const backups = await storage.getBackups();
+
+      await storage.savePrompt({ label: 'Modified', template: 'Content 2' });
+      await storage.getPrompts(); // populate cache with modified data
+
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 4000000);
+      await storage.restoreBackup(backups[0].id);
+      vi.useRealTimers();
+
+      const prompts = await storage.getPrompts();
+      expect(prompts.every(p => p.label !== 'Modified')).toBe(true);
+    });
+  });
+
+  describe('extractTags', () => {
+    it('extracts unique sorted tags from prompts', () => {
+      const prompts = [
+        { tags: ['b', 'a'] },
+        { tags: ['c', 'b'] }
+      ];
+      expect(extractTags(prompts)).toEqual(['a', 'b', 'c']);
+    });
+
+    it('returns empty array when no tags', () => {
+      const prompts = [{ tags: [] }, {}];
+      expect(extractTags(prompts)).toEqual([]);
+    });
+
+    it('trims and filters empty tags', () => {
+      const prompts = [{ tags: [' hello ', '', '  ', 'world'] }];
+      expect(extractTags(prompts)).toEqual(['hello', 'world']);
+    });
+  });
 })

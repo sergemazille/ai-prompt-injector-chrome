@@ -149,4 +149,4 @@ We believe your prompts are your intellectual property and should remain private
 
 ---
 
-*This privacy policy applies to the AI Prompt Injector browser extension version 1.3.0 and later.*
+*This privacy policy applies to the AI Prompt Injector browser extension version 1.5.0 and later.*

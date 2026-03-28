@@ -2,6 +2,11 @@ class PromptStorage {
   constructor() {
     this.storageKey = 'prompts';
     this.backupsKey = 'backups';
+    this._cache = null;
+  }
+
+  _invalidateCache() {
+    this._cache = null;
   }
 
   generateId() {
@@ -14,11 +19,13 @@ class PromptStorage {
   }
 
   async getPrompts() {
+  if (this._cache) return this._cache.map(p => ({...p, tags: [...(p.tags || [])]}));
+
   try {
     const result = await chrome.storage.local.get(this.storageKey);
     const raw = result[this.storageKey];
     let prompts = [];
-    
+
     if (Array.isArray(raw)) {
       prompts = raw;
     } else if (raw && typeof raw === 'object' && Array.isArray(raw.prompts)) {
@@ -28,21 +35,22 @@ class PromptStorage {
       await chrome.storage.local.set({ [this.storageKey]: [] });
       return [];
     }
-    
+
     prompts = prompts.map(prompt => ({
       ...prompt,
       favorite: prompt.favorite === true,
       createdAt: prompt.createdAt || this.extractTimestampFromId(prompt.id)
     }));
-    
+
     prompts.sort((a, b) => {
       if (a.favorite !== b.favorite) {
         return a.favorite ? -1 : 1;
       }
       return (b.createdAt || 0) - (a.createdAt || 0);
     });
-    
-    return prompts;
+
+    this._cache = prompts;
+    return prompts.map(p => ({...p, tags: [...(p.tags || [])]}));
   } catch (error) {
     console.error('Error getting prompts:', error);
     return [];
@@ -82,6 +90,7 @@ class PromptStorage {
       else prompts.push(normalized);
     }
     await chrome.storage.local.set({ [this.storageKey]: prompts });
+    this._invalidateCache();
     return normalized;
   } catch (error) {
     console.error('Error saving prompt:', error);
@@ -94,6 +103,7 @@ class PromptStorage {
       const prompts = await this.getPrompts();
       const filteredPrompts = prompts.filter(p => p.id !== promptId);
       await chrome.storage.local.set({ [this.storageKey]: filteredPrompts });
+      this._invalidateCache();
     } catch (error) {
       console.error('Error deleting prompt:', error);
       throw error;
@@ -138,7 +148,8 @@ class PromptStorage {
       }
       
       await chrome.storage.local.set({ [this.storageKey]: prompts });
-      
+      this._invalidateCache();
+
       return newStatus;
     } catch (error) {
       console.error('Error toggling favorite:', error);
@@ -180,6 +191,13 @@ class PromptStorage {
   }
 
   async importPrompts(jsonData) {
+  const MAX_IMPORT_SIZE = 5 * 1024 * 1024; // 5 MB
+  const MAX_IMPORT_COUNT = 500;
+
+  if (jsonData.length > MAX_IMPORT_SIZE) {
+    throw new Error(`Import data exceeds maximum size of 5 MB`);
+  }
+
   try {
     const data = JSON.parse(jsonData);
     let promptsArray = null;
@@ -187,6 +205,13 @@ class PromptStorage {
     else if (Array.isArray(data)) promptsArray = data;
     else if (data && typeof data === 'object' && Array.isArray(data.data)) promptsArray = data.data;
     else throw new Error('Invalid file format: expected {"prompts":[...]} or an array');
+
+    const originalTotal = promptsArray.length;
+    let limited = false;
+    if (promptsArray.length > MAX_IMPORT_COUNT) {
+      promptsArray = promptsArray.slice(0, MAX_IMPORT_COUNT);
+      limited = true;
+    }
 
     const existingPrompts = await this.getPrompts();
     const existingTitles = new Set(existingPrompts.map(p => (p.label || '').toLowerCase().trim()));
@@ -243,7 +268,8 @@ class PromptStorage {
     }
 
     await chrome.storage.local.set({ [this.storageKey]: existingPrompts });
-    return { imported, total: promptsArray.length };
+    this._invalidateCache();
+    return { imported, total: originalTotal, limited };
   } catch (error) {
     if (error instanceof SyntaxError) throw new Error('Invalid JSON file');
     throw error;
@@ -269,7 +295,7 @@ class PromptStorage {
         date: new Date().toISOString(),
         reason,
         promptCount: prompts.length,
-        prompts: JSON.parse(JSON.stringify(prompts))
+        prompts: structuredClone(prompts)
       };
 
       backups.unshift(backup);
@@ -303,6 +329,7 @@ class PromptStorage {
       }
 
       await chrome.storage.local.set({ [this.storageKey]: backup.prompts });
+      this._invalidateCache();
     } catch (error) {
       console.error('Error restoring backup:', error);
       throw error;
@@ -310,6 +337,16 @@ class PromptStorage {
   }
 }
 
+function extractTags(prompts) {
+  const tags = new Set();
+  prompts.forEach(p => {
+    if (p.tags && Array.isArray(p.tags)) {
+      p.tags.forEach(tag => { const t = tag.trim(); if (t) tags.add(t); });
+    }
+  });
+  return Array.from(tags).sort();
+}
+
 const promptStorage = new PromptStorage();
 
-export { PromptStorage, promptStorage };
+export { PromptStorage, promptStorage, extractTags };

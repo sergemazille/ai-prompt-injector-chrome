@@ -1,5 +1,5 @@
 import { t, applyI18nToDOM, I18N_LOCALE } from './i18n.js';
-import { promptStorage } from './storage.js';
+import { promptStorage, extractTags } from './storage.js';
 
 class PromptManager {
   constructor() {
@@ -8,6 +8,7 @@ class PromptManager {
     this.currentSearchFilter = '';
     this.allTags = [];
     this.tagSuggestionIndex = -1;
+    this.currentTheme = 'auto';
     this.init();
   }
 
@@ -15,8 +16,7 @@ class PromptManager {
     await this.initTheme();
     applyI18nToDOM();
     this.bindEvents();
-    await this.loadPrompts();
-    await this.loadTags();
+    await this.loadPromptsAndTags();
 
     setTimeout(() => {
       const searchInput = document.getElementById('search-input');
@@ -29,11 +29,11 @@ class PromptManager {
   async initTheme() {
     try {
       const result = await chrome.storage.local.get(['theme']);
-      const theme = result.theme || 'auto';
-      this.applyTheme(theme);
+      this.currentTheme = result.theme || 'auto';
     } catch (error) {
-      this.applyTheme('auto');
+      this.currentTheme = 'auto';
     }
+    this.applyTheme(this.currentTheme);
   }
 
   applyTheme(theme) {
@@ -55,16 +55,11 @@ class PromptManager {
 
   cycleTheme() {
     const themes = ['auto', 'light', 'dark'];
-    const currentBtn = document.getElementById('theme-toggle');
-    let current = 'auto';
-    if (currentBtn.textContent === '☀️') current = 'light';
-    else if (currentBtn.textContent === '🌙') current = 'dark';
-    
-    const idx = themes.indexOf(current);
-    const next = themes[(idx + 1) % themes.length];
-    
-    this.applyTheme(next);
-    chrome.storage.local.set({ theme: next });
+    const idx = themes.indexOf(this.currentTheme);
+    this.currentTheme = themes[(idx + 1) % themes.length];
+
+    this.applyTheme(this.currentTheme);
+    chrome.storage.local.set({ theme: this.currentTheme });
   }
 
   bindEvents() {
@@ -91,7 +86,11 @@ class PromptManager {
       } else if (id === 'tag-filter') {
         element.addEventListener('change', handler);
       } else if (id === 'search-input') {
-        element.addEventListener('input', handler);
+        let debounceTimer;
+        element.addEventListener('input', (e) => {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => handler(e), 200);
+        });
       } else {
         element.addEventListener('click', handler);
       }
@@ -197,6 +196,8 @@ class PromptManager {
         this.selectTag(selectedTag);
       }
     } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
       this.hideTagSuggestions();
     }
   }
@@ -277,8 +278,7 @@ class PromptManager {
     
     try {
       await promptStorage.restoreBackup(backupId);
-      await this.loadPrompts();
-      await this.loadTags();
+      await this.loadPromptsAndTags();
       this.showNotification(t('notify.restored', 0), 'success');
       this.toggleBackupPanel();
     } catch (error) {
@@ -411,11 +411,13 @@ class PromptManager {
     }
 
     form.classList.remove('hidden');
+    document.getElementById('prompt-list').style.display = 'none';
     titleInput.focus();
   }
 
   hideForm() {
     document.getElementById('prompt-form').classList.add('hidden');
+    document.getElementById('prompt-list').style.display = '';
     this.currentEditId = null;
     this.hideTagSuggestions();
   }
@@ -457,41 +459,40 @@ class PromptManager {
     try {
       await promptStorage.savePrompt(prompt);
       this.hideForm();
-      await this.loadPrompts();
-      await this.loadTags();
+      await this.loadPromptsAndTags();
     } catch (error) {
       console.error('Error saving prompt:', error);
       alert(t('alert.saveError'));
     }
   }
 
-  async loadPrompts() {
+  async loadPromptsAndTags() {
     try {
       const prompts = await promptStorage.getPrompts();
+      this.allTags = extractTags(prompts);
       this.renderPrompts(prompts);
+      this.renderTagFilter();
     } catch (error) {
-      console.error('Error loading prompts:', error);
+      console.error('Error loading:', error);
     }
   }
 
-  async loadTags() {
-    try {
-      this.allTags = await promptStorage.getAllTags();
-      const select = document.getElementById('tag-filter');
-      const currentValue = select.value;
+  renderTagFilter() {
+    const select = document.getElementById('tag-filter');
+    const currentValue = select.value;
 
-      select.innerHTML = `<option value="">${t('filter.allTags')}</option>`;
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = t('filter.allTags');
+    select.replaceChildren(defaultOption);
 
-      this.allTags.forEach(tag => {
-        const option = document.createElement('option');
-        option.value = tag;
-        option.textContent = tag;
-        if (tag === currentValue) option.selected = true;
-        select.appendChild(option);
-      });
-    } catch (error) {
-      console.error('Error loading tags:', error);
-    }
+    this.allTags.forEach(tag => {
+      const option = document.createElement('option');
+      option.value = tag;
+      option.textContent = tag;
+      if (tag === currentValue) option.selected = true;
+      select.appendChild(option);
+    });
   }
 
   renderPrompts(prompts) {
@@ -499,41 +500,55 @@ class PromptManager {
     const emptyState = document.getElementById('empty-state');
 
     if (!prompts || prompts.length === 0) {
-      container.innerHTML = '';
+      container.replaceChildren();
       emptyState.classList.remove('hidden');
       return;
     }
 
     emptyState.classList.add('hidden');
 
-    let filteredPrompts = prompts;
-
-    if (this.currentSearchFilter) {
-      filteredPrompts = filteredPrompts.filter(prompt =>
-        prompt.label.toLowerCase().includes(this.currentSearchFilter)
-      );
-    }
-
-    if (this.currentFilter) {
-      filteredPrompts = filteredPrompts.filter(prompt =>
-        prompt.tags && prompt.tags.includes(this.currentFilter)
-      );
-    }
-
-    if (filteredPrompts.length === 0) {
-      container.innerHTML = '';
-      const noResults = document.createElement('div');
-      noResults.className = 'no-results';
-      noResults.textContent = t('filter.noResults');
-      container.appendChild(noResults);
-      return;
-    }
-
-    container.innerHTML = '';
-    filteredPrompts.forEach(prompt => {
+    container.replaceChildren();
+    prompts.forEach(prompt => {
       const element = this.createPromptElementDOM(prompt);
       container.appendChild(element);
     });
+
+    // Apply filter/search visibility
+    let visibleCount = 0;
+    const items = container.querySelectorAll('.prompt-item');
+    items.forEach(item => {
+      const id = item.dataset.id;
+      const prompt = prompts.find(p => p.id === id);
+      if (!prompt) {
+        item.classList.add('hidden');
+        return;
+      }
+
+      let visible = true;
+      if (this.currentSearchFilter) {
+        visible = prompt.label.toLowerCase().includes(this.currentSearchFilter);
+      }
+      if (visible && this.currentFilter) {
+        visible = prompt.tags && prompt.tags.includes(this.currentFilter);
+      }
+
+      item.classList.toggle('hidden', !visible);
+      if (visible) visibleCount++;
+    });
+
+    // Show "no results" if all filtered out
+    let noResults = container.querySelector('.no-results');
+    if (visibleCount === 0) {
+      if (!noResults) {
+        noResults = document.createElement('div');
+        noResults.className = 'no-results';
+        noResults.textContent = t('filter.noResults');
+        container.appendChild(noResults);
+      }
+      noResults.classList.remove('hidden');
+    } else if (noResults) {
+      noResults.classList.add('hidden');
+    }
   }
 
   createPromptElementDOM(prompt) {
@@ -600,12 +615,12 @@ class PromptManager {
 
   async filterPrompts(tag) {
     this.currentFilter = tag;
-    await this.loadPrompts();
+    await this.loadPromptsAndTags();
   }
 
   async searchPrompts(searchTerm) {
     this.currentSearchFilter = searchTerm.toLowerCase().trim();
-    await this.loadPrompts();
+    await this.loadPromptsAndTags();
   }
 
   async exportPrompts() {
@@ -695,8 +710,7 @@ class PromptManager {
         this.showNotification(t('notify.importedPartial', result.imported, result.total));
       }
 
-      await this.loadPrompts();
-      await this.loadTags();
+      await this.loadPromptsAndTags();
 
       const dropZone = document.getElementById('drop-zone');
       if (dropZone && !dropZone.classList.contains('hidden')) {
@@ -711,12 +725,10 @@ class PromptManager {
   }
 
   async insertPrompt(promptId) {
-    try {
-      const prompt = await promptStorage.getPromptById(promptId);
-      if (!prompt) {
-        return;
-      }
+    const prompt = await promptStorage.getPromptById(promptId);
+    if (!prompt) return;
 
+    try {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tabs.length === 0) {
         alert(t('alert.noActiveTab'));
@@ -725,18 +737,17 @@ class PromptManager {
 
       const tabId = tabs[0].id;
 
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        func: (text, locale) => {
-          window._aiPromptPending = text;
-          window._aiPromptLocale = locale;
-        },
-        args: [prompt.template, I18N_LOCALE]
-      });
-
+      // Inject content script (idempotent - load guard prevents re-init)
       await chrome.scripting.executeScript({
         target: { tabId },
         files: ['content.js']
+      });
+
+      // Send injection command via Chrome message API
+      await chrome.tabs.sendMessage(tabId, {
+        type: 'inject',
+        text: prompt.template,
+        locale: I18N_LOCALE
       });
 
       window.close();
@@ -744,7 +755,6 @@ class PromptManager {
       console.error('Error inserting prompt:', error);
       await this.copyToClipboard(prompt.template);
       this.showNotification(t('notify.cannotInject'), 'warning');
-      window.close();
     }
   }
 
@@ -794,8 +804,7 @@ class PromptManager {
 
     try {
       await promptStorage.deletePrompt(promptId);
-      await this.loadPrompts();
-      await this.loadTags();
+      await this.loadPromptsAndTags();
     } catch (error) {
       console.error('Error deleting prompt:', error);
       alert(t('alert.deleteError'));
@@ -804,9 +813,8 @@ class PromptManager {
 
   async toggleFavorite(promptId) {
     try {
-      const prompt = await promptStorage.getPromptById(promptId);
       const newFavoriteStatus = await promptStorage.toggleFavorite(promptId);
-      await this.loadPrompts();
+      await this.loadPromptsAndTags();
 
       if (newFavoriteStatus) {
         this.showNotification(t('notify.addedFavorite'), 'success');
@@ -819,6 +827,8 @@ class PromptManager {
     }
   }
 }
+
+export { PromptManager };
 
 document.addEventListener('DOMContentLoaded', () => {
   const manager = new PromptManager();

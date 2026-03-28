@@ -1,5 +1,8 @@
 dist
 node_modules
+docs
+pnpm-lock.yaml
 .claude
 .opencode
 openspec
+test-results
