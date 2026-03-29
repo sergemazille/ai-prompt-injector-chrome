@@ -53,8 +53,11 @@ Install from [Chrome Web Store](https://chromewebstore.google.com/detail/ai-prom
 ├── background.js        # Auto-backup on startup and update
 ├── i18n.js              # Internationalization (en, fr)
 ├── icons/               # Extension icons (16–128px)
-├── tests/               # Unit tests (Vitest + happy-dom)
-├── vitest.config.js     # Test configuration
+├── tests/               # Unit & integration tests (Vitest + Playwright)
+├── vitest.config.js     # Vitest configuration
+├── playwright.config.js # Playwright e2e configuration
+├── build-chrome.sh      # Build script for Chrome Web Store
+├── CHANGELOG.md         # Version history
 ├── PRIVACY.md           # Privacy policy
 ├── TESTING.md           # Test documentation
 └── LICENSE              # MIT
@@ -95,6 +98,8 @@ No external runtime dependencies.
 npm test              # Run tests in watch mode
 npm run test:run      # Single test run
 npm run test:coverage # Run with coverage report
+npm run test:e2e      # Run integration tests (Playwright)
+npm run test:e2e:ui   # Run integration tests with UI
 ```
 
 To update DOM selectors for AI platforms, edit the `domainSelectors` object in `content.js`.
